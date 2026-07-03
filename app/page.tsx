@@ -27,17 +27,23 @@ interface SignatureInfo {
   matchedFingerprint?: string;
   created?: string;
   detail?: string;
+  signerRevoked?: boolean;
+  signerExpired?: boolean;
 }
 
 interface VerifyResult {
   ok: boolean;
   error?: string;
+  errorKind?: string;
   email: string;
   keyserver?: string;
   keyserverNote?: string;
   keys?: KeyInfo[];
   signatures?: SignatureInfo[];
   anyValid?: boolean;
+  anyInvalid?: boolean;
+  validButUntrustedKey?: boolean;
+  warnings?: string[];
   signedText?: string;
   signedTextTruncated?: boolean;
 }
@@ -145,7 +151,17 @@ export default function Home() {
       setNetError("File is larger than the 2 MB limit.");
       return;
     }
-    const text = await file.text();
+    // Windows tools often save as UTF-16; File.text() always decodes UTF-8,
+    // which would turn the file into invisible mojibake. Sniff the encoding.
+    const buf = new Uint8Array(await file.arrayBuffer());
+    let encoding = "utf-8";
+    if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe) encoding = "utf-16le";
+    else if (buf.length >= 2 && buf[0] === 0xfe && buf[1] === 0xff) encoding = "utf-16be";
+    let text = new TextDecoder(encoding).decode(buf);
+    if (encoding === "utf-8" && text.includes("\u0000")) {
+      // BOM-less UTF-16: NUL at even byte index means big-endian
+      text = new TextDecoder(buf[0] === 0 ? "utf-16be" : "utf-16le").decode(buf);
+    }
     setMessage(text);
     setFileName(file.name);
     setNetError(null);
@@ -153,6 +169,12 @@ export default function Home() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    // Mirror the server's byte-based gate so users get an honest error even
+    // though JSON escaping inflates the request body.
+    if (new TextEncoder().encode(message).length > 2 * 1024 * 1024) {
+      setNetError("Message is larger than the 2 MB limit.");
+      return;
+    }
     setLoading(true);
     setResult(null);
     setNetError(null);
@@ -173,8 +195,48 @@ export default function Home() {
     }
   }
 
+  // "good" only when a signature verified, nothing failed, and the signing
+  // key is still healthy today. Anything mixed gets the amber caution state.
+  const validSigs =
+    result?.signatures?.filter((s) => s.status === "valid") ?? [];
   const verdict =
-    result && (result.ok ? (result.anyValid ? "good" : "bad") : "error");
+    result &&
+    (!result.ok
+      ? "error"
+      : !result.anyValid
+      ? "bad"
+      : result.anyInvalid || result.validButUntrustedKey
+      ? "caution"
+      : "good");
+
+  const matchedFprs = [
+    ...new Set(validSigs.map((s) => s.matchedFingerprint).filter(Boolean)),
+  ] as string[];
+  const keyCount = result?.keys?.length ?? 0;
+
+  function goodBannerText(): string {
+    const keyIds = matchedFprs.map((f) => f.slice(-16)).join(", ");
+    if (keyCount > 1) {
+      return `✔ Signature is VALID — made by key ${keyIds}, one of ${keyCount} keys the keyserver returned for ${result?.email}. Check the fingerprint below.`;
+    }
+    return `✔ Signature is VALID and matches the key found for ${result?.email}`;
+  }
+
+  function cautionBannerText(): string {
+    const parts: string[] = [];
+    if (validSigs.some((s) => s.signerRevoked)) {
+      parts.push(
+        "the signing key has since been REVOKED — do not trust this without out-of-band confirmation"
+      );
+    }
+    if (validSigs.some((s) => s.signerExpired)) {
+      parts.push("the signing key has since EXPIRED");
+    }
+    if (result?.anyInvalid) {
+      parts.push("another signature on this message FAILED verification");
+    }
+    return `⚠ A signature is cryptographically valid, but ${parts.join("; and ")}.`;
+  }
 
   return (
     <main>
@@ -254,19 +316,26 @@ export default function Home() {
             className={
               verdict === "good"
                 ? "banner banner-good"
+                : verdict === "caution"
+                ? "banner banner-warn"
                 : verdict === "bad"
                 ? "banner banner-bad"
                 : "banner banner-error"
             }
           >
-            {verdict === "good" &&
-              "✔ Signature is VALID and matches the key found for " +
-                result.email}
+            {verdict === "good" && goodBannerText()}
+            {verdict === "caution" && cautionBannerText()}
             {verdict === "bad" &&
               "✘ Signature did NOT verify against the key found for " +
                 result.email}
             {verdict === "error" && (result.error ?? "Verification failed.")}
           </div>
+
+          {result.warnings?.map((w) => (
+            <div key={w} className="banner banner-warn">
+              ⚠ {w}
+            </div>
+          ))}
 
           {result.keyserver && (
             <p className="keyserver-line">
@@ -282,8 +351,24 @@ export default function Home() {
               <h2>Signatures</h2>
               <ul className="sig-list">
                 {result.signatures.map((sig, i) => (
-                  <li key={i} className={`sig sig-${sig.status}`}>
-                    <div className="sig-status">{SIG_LABEL[sig.status]}</div>
+                  <li
+                    key={i}
+                    className={`sig sig-${
+                      sig.status === "valid" &&
+                      (sig.signerRevoked || sig.signerExpired)
+                        ? "caution"
+                        : sig.status
+                    }`}
+                  >
+                    <div className="sig-status">
+                      {SIG_LABEL[sig.status]}
+                      {sig.status === "valid" && sig.signerRevoked && (
+                        <span className="badge badge-bad">key now revoked</span>
+                      )}
+                      {sig.status === "valid" && sig.signerExpired && (
+                        <span className="badge badge-warn">key now expired</span>
+                      )}
+                    </div>
                     <div className="sig-meta">
                       by key ID <code>{sig.keyId}</code>
                       {sig.created && <> · signed {formatDate(sig.created)}</>}

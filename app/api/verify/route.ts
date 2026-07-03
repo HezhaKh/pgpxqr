@@ -5,8 +5,10 @@ export const runtime = "nodejs";
 export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
+  // Coarse pre-parse guard only: JSON escaping inflates the message (~2 bytes
+  // per newline), so allow 2x here; the post-parse check below is the real gate.
   const contentLength = Number(req.headers.get("content-length") ?? 0);
-  if (contentLength > MAX_MESSAGE_BYTES + 4096) {
+  if (contentLength > MAX_MESSAGE_BYTES * 2 + 4096) {
     return NextResponse.json(
       { ok: false, error: "Request too large. Maximum message size is 2 MB." },
       { status: 413 }
@@ -40,7 +42,12 @@ export async function POST(req: NextRequest) {
 
   try {
     const result = await verifyClearsigned(email, message);
-    return NextResponse.json(result, { status: result.ok ? 200 : 422 });
+    const status = result.ok
+      ? 200
+      : result.errorKind === "keyserver-unavailable"
+      ? 502
+      : 422;
+    return NextResponse.json(result, { status });
   } catch (e) {
     return NextResponse.json(
       {

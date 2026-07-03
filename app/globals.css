@@ -186,6 +186,24 @@ button.secondary {
   border-color: var(--bad-border);
 }
 
+.banner-warn {
+  background: var(--warn-bg);
+  color: var(--warn-fg);
+  border-color: var(--warn-fg);
+}
+
+.sig-caution {
+  border-left-color: var(--warn-fg);
+}
+
+.sig-caution .sig-status {
+  color: var(--warn-fg);
+}
+
+.sig-status .badge {
+  margin-left: 0.5rem;
+}
+
 .keyserver-line {
   color: var(--muted);
   font-size: 0.9rem;

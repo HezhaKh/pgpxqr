@@ -1,6 +1,9 @@
 import * as openpgp from "openpgp";
 
 export const MAX_MESSAGE_BYTES = 2 * 1024 * 1024; // 2 MB, below Vercel's 4.5 MB request cap
+const MAX_KEYSERVER_RESPONSE_BYTES = 8 * 1024 * 1024; // flooded keys can be tens of MB
+const MAX_KEYS_CHECKED = 25;
+const MAX_SIGNATURES_CHECKED = 10;
 const KEYSERVER_TIMEOUT_MS = 8000;
 const SIGNED_TEXT_PREVIEW_CHARS = 5000;
 
@@ -35,17 +38,26 @@ export interface SignatureInfo {
   matchedFingerprint?: string;
   created?: string;
   detail?: string;
+  // For "valid" signatures: whether the signing key is usable *today*.
+  // openpgp.js verifies against the key's state at signature-creation time,
+  // so a since-revoked or since-expired key still verifies.
+  signerRevoked?: boolean;
+  signerExpired?: boolean;
 }
 
 export interface VerifyResult {
   ok: boolean;
   error?: string;
+  errorKind?: "keyserver-unavailable";
   email: string;
   keyserver?: Keyserver;
   keyserverNote?: string;
   keys?: KeyInfo[];
   signatures?: SignatureInfo[];
   anyValid?: boolean;
+  anyInvalid?: boolean;
+  validButUntrustedKey?: boolean;
+  warnings?: string[];
   signedText?: string;
   signedTextTruncated?: boolean;
 }
@@ -64,40 +76,106 @@ async function fetchWithTimeout(url: string): Promise<Response> {
   });
 }
 
-export async function lookupKeyByEmail(
-  email: string
-): Promise<{ armored: string; keyserver: Keyserver } | null> {
+// Read a response body but refuse to buffer more than maxBytes, so a
+// flooded/poisoned key on the keyserver can't exhaust function memory.
+async function readBodyLimited(
+  res: Response,
+  maxBytes: number
+): Promise<string | null> {
+  const declared = Number(res.headers.get("content-length") ?? 0);
+  if (declared > maxBytes) return null;
+  const reader = res.body?.getReader();
+  if (!reader) {
+    const text = await res.text();
+    return text.length > maxBytes ? null : text;
+  }
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    merged.set(c, offset);
+    offset += c.byteLength;
+  }
+  return new TextDecoder().decode(merged);
+}
+
+type LookupOutcome =
+  | { status: "found"; armored: string; keyserver: Keyserver }
+  | { status: "not-found" }
+  | { status: "unavailable"; detail: string };
+
+// Queries one keyserver. "not-found" only when the server answered the
+// question (404, or a 2xx body with no key); anything else is an error so the
+// caller never claims a key doesn't exist just because a server was down.
+async function queryKeyserver(
+  url: string,
+  host: Keyserver
+): Promise<LookupOutcome> {
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(url);
+  } catch (e) {
+    return {
+      status: "unavailable",
+      detail: `${host}: ${e instanceof Error ? e.message : String(e)}`,
+    };
+  }
+  if (res.status === 404) return { status: "not-found" };
+  if (!res.ok) {
+    return { status: "unavailable", detail: `${host}: HTTP ${res.status}` };
+  }
+  const armored = await readBodyLimited(res, MAX_KEYSERVER_RESPONSE_BYTES);
+  if (armored === null) {
+    return {
+      status: "unavailable",
+      detail: `${host}: response exceeded ${MAX_KEYSERVER_RESPONSE_BYTES} bytes`,
+    };
+  }
+  if (!armored.includes("-----BEGIN PGP PUBLIC KEY BLOCK-----")) {
+    return { status: "not-found" };
+  }
+  return { status: "found", armored, keyserver: host };
+}
+
+export async function lookupKeyByEmail(email: string): Promise<LookupOutcome> {
   const encoded = encodeURIComponent(email);
 
   // Primary: keys.openpgp.org (returns keys only for verified email addresses)
-  try {
-    const res = await fetchWithTimeout(`${VKS_BASE}/vks/v1/by-email/${encoded}`);
-    if (res.ok) {
-      const armored = await res.text();
-      if (armored.includes("-----BEGIN PGP PUBLIC KEY BLOCK-----")) {
-        return { armored, keyserver: new URL(VKS_BASE).host };
-      }
-    }
-  } catch {
-    // fall through to the next keyserver
-  }
+  const vks = await queryKeyserver(
+    `${VKS_BASE}/vks/v1/by-email/${encoded}`,
+    new URL(VKS_BASE).host
+  );
+  if (vks.status === "found") return vks;
 
   // Fallback: keyserver.ubuntu.com (no email ownership verification)
-  try {
-    const res = await fetchWithTimeout(
-      `${HKP_BASE}/pks/lookup?op=get&options=mr&exact=on&search=${encoded}`
-    );
-    if (res.ok) {
-      const armored = await res.text();
-      if (armored.includes("-----BEGIN PGP PUBLIC KEY BLOCK-----")) {
-        return { armored, keyserver: new URL(HKP_BASE).host };
-      }
-    }
-  } catch {
-    // both keyservers unreachable; caller reports key-not-found
-  }
+  const hkp = await queryKeyserver(
+    `${HKP_BASE}/pks/lookup?op=get&options=mr&exact=on&search=${encoded}`,
+    new URL(HKP_BASE).host
+  );
+  if (hkp.status === "found") return hkp;
 
-  return null;
+  // Only claim absence when both servers definitively answered "no key".
+  if (vks.status === "not-found" && hkp.status === "not-found") {
+    return { status: "not-found" };
+  }
+  const details = [vks, hkp]
+    .filter((o): o is Extract<LookupOutcome, { status: "unavailable" }> =>
+      o.status === "unavailable"
+    )
+    .map((o) => o.detail)
+    .join("; ");
+  return { status: "unavailable", detail: details };
 }
 
 function algorithmLabel(info: {
@@ -120,13 +198,18 @@ async function keyExpiry(
 ): Promise<{ expires: string; expired: boolean }> {
   try {
     const exp = await key.getExpirationTime();
-    if (exp === null || exp === Infinity) {
+    if (exp === Infinity) {
       return { expires: "never", expired: false };
+    }
+    if (exp === null) {
+      // openpgp v6 returns null (it does not throw) when the key has no valid
+      // self-signature or its primary user ID is revoked — expiry is unknowable.
+      return { expires: "unknown", expired: false };
     }
     const date = exp as Date;
     return { expires: date.toISOString(), expired: date.getTime() < Date.now() };
   } catch {
-    // getExpirationTime throws for keys with no valid self-signature
+    // defensive: getExpirationTime is not expected to throw in openpgp v6
     return { expires: "unknown", expired: false };
   }
 }
@@ -157,16 +240,153 @@ export async function describeKey(key: openpgp.PublicKey): Promise<KeyInfo> {
   };
 }
 
-function findKeyOwningKeyId(
+function keysOwningKeyId(
   keys: openpgp.PublicKey[],
   keyIdHex: string
-): openpgp.PublicKey | undefined {
+): openpgp.PublicKey[] {
   const target = keyIdHex.toLowerCase();
-  return keys.find(
+  return keys.filter(
     (k) =>
       k.getKeyID().toHex().toLowerCase() === target ||
       k.subkeys.some((sk) => sk.getKeyID().toHex().toLowerCase() === target)
   );
+}
+
+// The clearsign armor parser silently ignores anything before the BEGIN line
+// and after the signature's END line — including a whole second clearsigned
+// block. Reject such input outright so a "valid" verdict can never bless a
+// paste that carries unverified content. Markers are matched as whole lines,
+// so dash-escaped occurrences inside the signed body don't count.
+function validateSingleClearsignBlock(text: string): string | null {
+  const BEGIN = "-----BEGIN PGP SIGNED MESSAGE-----";
+  const SIG_BEGIN = "-----BEGIN PGP SIGNATURE-----";
+  const SIG_END = "-----END PGP SIGNATURE-----";
+  const lines = text.split("\n").map((l) => l.replace(/\r$/, ""));
+  const at = (marker: string) =>
+    lines.reduce<number[]>((acc, l, i) => (l === marker ? [...acc, i] : acc), []);
+  const begins = at(BEGIN);
+  const sigBegins = at(SIG_BEGIN);
+  const sigEnds = at(SIG_END);
+  if (begins.length !== 1 || sigBegins.length !== 1 || sigEnds.length !== 1) {
+    return "Input must contain exactly one clearsigned block (one signed-message header and one signature). Concatenated or nested blocks are not verified.";
+  }
+  if (!(begins[0] < sigBegins[0] && sigBegins[0] < sigEnds[0])) {
+    return "The clearsigned block is malformed: its armor markers are out of order.";
+  }
+  const outside = [...lines.slice(0, begins[0]), ...lines.slice(sigEnds[0] + 1)];
+  if (outside.some((l) => l.trim() !== "")) {
+    return "Input has extra content before or after the clearsigned block. That content would not be covered by the signature, so it is rejected.";
+  }
+  return null;
+}
+
+interface SignatureCheck {
+  info: SignatureInfo;
+  valid: boolean;
+  signerUnusableNow: boolean;
+}
+
+// openpgp does not export its per-signature VerificationResult type directly.
+type SignatureVerification = openpgp.VerifyMessageResult["signatures"][number];
+
+async function checkOneSignature(
+  message: openpgp.CleartextMessage,
+  sig: SignatureVerification,
+  keys: openpgp.PublicKey[]
+): Promise<SignatureCheck> {
+  const keyIdHex = sig.keyID.toHex().toUpperCase();
+  let created: string | undefined;
+  try {
+    const packet = await sig.signature;
+    created = packet.packets[0]?.created?.toISOString();
+  } catch {
+    created = undefined;
+  }
+
+  const owners = keysOwningKeyId(keys, keyIdHex);
+  if (owners.length === 0) {
+    return {
+      valid: false,
+      signerUnusableNow: false,
+      info: {
+        keyId: keyIdHex,
+        status: "no-matching-key",
+        created,
+        detail:
+          "This signature was made by a key that is not the one found for the email.",
+      },
+    };
+  }
+
+  // Key IDs are only 64 bits, so several keyserver keys can claim the same
+  // ID (e.g. an impostor key embedding a copy of the real signing subkey).
+  // openpgp.verify binds each signature to the FIRST matching key, which
+  // would let such a crafted key shadow the real one and turn a genuine
+  // signature into "invalid" — so try every owning candidate independently.
+  let matched: openpgp.PublicKey | undefined;
+  let lastError: unknown;
+  for (const owner of owners) {
+    try {
+      const result = await openpgp.verify({
+        message,
+        verificationKeys: owner,
+        expectSigned: false,
+      });
+      const candidate = result.signatures.find(
+        (s) => s.keyID.toHex().toUpperCase() === keyIdHex
+      );
+      if (!candidate) continue;
+      await candidate.verified;
+      matched = owner;
+      break;
+    } catch (e) {
+      lastError = e;
+    }
+  }
+
+  if (!matched) {
+    return {
+      valid: false,
+      signerUnusableNow: false,
+      info: {
+        keyId: keyIdHex,
+        status: "invalid",
+        matchedFingerprint: formatFingerprint(owners[0].getFingerprint()),
+        created,
+        detail: lastError instanceof Error ? lastError.message : String(lastError),
+      },
+    };
+  }
+
+  // The signature verified against the key's state at signing time. Now check
+  // whether that signer is still usable today; a soft-revoked or since-expired
+  // key must not produce an unqualified "valid".
+  let signerRevoked = false;
+  let signerExpired = false;
+  let healthDetail: string | undefined;
+  try {
+    await matched.getSigningKey(sig.keyID, new Date());
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/revoked/i.test(msg)) signerRevoked = true;
+    else if (/expired/i.test(msg)) signerExpired = true;
+    else signerRevoked = true; // unknown unusable state: treat as untrusted
+    healthDetail = `Signing key is not usable today: ${msg}`;
+  }
+
+  return {
+    valid: true,
+    signerUnusableNow: signerRevoked || signerExpired,
+    info: {
+      keyId: keyIdHex,
+      status: "valid",
+      matchedFingerprint: formatFingerprint(matched.getFingerprint()),
+      created,
+      signerRevoked,
+      signerExpired,
+      detail: healthDetail,
+    },
+  };
 }
 
 export async function verifyClearsigned(
@@ -187,6 +407,11 @@ export async function verifyClearsigned(
     };
   }
 
+  const structureError = validateSingleClearsignBlock(clearsignedText);
+  if (structureError) {
+    return { ok: false, email: trimmedEmail, error: structureError };
+  }
+
   let message: openpgp.CleartextMessage;
   try {
     message = await openpgp.readCleartextMessage({
@@ -203,7 +428,15 @@ export async function verifyClearsigned(
   }
 
   const lookup = await lookupKeyByEmail(trimmedEmail);
-  if (!lookup) {
+  if (lookup.status === "unavailable") {
+    return {
+      ok: false,
+      email: trimmedEmail,
+      errorKind: "keyserver-unavailable",
+      error: `The keyservers could not be reached, so whether a key exists for this email is unknown. Try again later. (${lookup.detail})`,
+    };
+  }
+  if (lookup.status === "not-found") {
     return {
       ok: false,
       email: trimmedEmail,
@@ -237,58 +470,44 @@ export async function verifyClearsigned(
     };
   }
 
+  const warnings: string[] = [];
+  if (keys.length > MAX_KEYS_CHECKED) {
+    warnings.push(
+      `The keyserver returned ${keys.length} keys for this email; only the first ${MAX_KEYS_CHECKED} were checked.`
+    );
+    keys = keys.slice(0, MAX_KEYS_CHECKED);
+  }
+
   const signatures: SignatureInfo[] = [];
   let anyValid = false;
+  let anyInvalid = false;
+  let validButUntrustedKey = false;
   let signedText = "";
 
   try {
     const result = await openpgp.verify({
       message,
       verificationKeys: keys,
-      // report invalid/unknown signatures ourselves instead of throwing
       expectSigned: false,
     });
     signedText = result.data as string;
 
-    for (const sig of result.signatures) {
-      const keyIdHex = sig.keyID.toHex().toUpperCase();
-      const owner = findKeyOwningKeyId(keys, keyIdHex);
-      let created: string | undefined;
-      try {
-        const packet = await sig.signature;
-        created = packet.packets[0]?.created?.toISOString();
-      } catch {
-        created = undefined;
-      }
+    let sigs = result.signatures;
+    if (sigs.length > MAX_SIGNATURES_CHECKED) {
+      warnings.push(
+        `The message carries ${sigs.length} signatures; only the first ${MAX_SIGNATURES_CHECKED} were checked.`
+      );
+      sigs = sigs.slice(0, MAX_SIGNATURES_CHECKED);
+    }
 
-      if (!owner) {
-        signatures.push({
-          keyId: keyIdHex,
-          status: "no-matching-key",
-          created,
-          detail:
-            "This signature was made by a key that is not the one found for the email.",
-        });
-        continue;
-      }
-
-      try {
-        await sig.verified;
+    for (const sig of sigs) {
+      const check = await checkOneSignature(message, sig, keys);
+      signatures.push(check.info);
+      if (check.valid) {
         anyValid = true;
-        signatures.push({
-          keyId: keyIdHex,
-          status: "valid",
-          matchedFingerprint: formatFingerprint(owner.getFingerprint()),
-          created,
-        });
-      } catch (e) {
-        signatures.push({
-          keyId: keyIdHex,
-          status: "invalid",
-          matchedFingerprint: formatFingerprint(owner.getFingerprint()),
-          created,
-          detail: e instanceof Error ? e.message : String(e),
-        });
+        if (check.signerUnusableNow) validButUntrustedKey = true;
+      } else if (check.info.status === "invalid") {
+        anyInvalid = true;
       }
     }
   } catch (e) {
@@ -304,7 +523,16 @@ export async function verifyClearsigned(
   }
 
   const keyInfos = await Promise.all(keys.map(describeKey));
+
   const truncated = signedText.length > SIGNED_TEXT_PREVIEW_CHARS;
+  let previewEnd = SIGNED_TEXT_PREVIEW_CHARS;
+  // Don't split a surrogate pair at the truncation point.
+  if (
+    truncated &&
+    (signedText.codePointAt(SIGNED_TEXT_PREVIEW_CHARS - 1) ?? 0) > 0xffff
+  ) {
+    previewEnd = SIGNED_TEXT_PREVIEW_CHARS - 1;
+  }
 
   return {
     ok: true,
@@ -319,9 +547,10 @@ export async function verifyClearsigned(
     keys: keyInfos,
     signatures,
     anyValid,
-    signedText: truncated
-      ? signedText.slice(0, SIGNED_TEXT_PREVIEW_CHARS)
-      : signedText,
+    anyInvalid,
+    validButUntrustedKey,
+    warnings: warnings.length > 0 ? warnings : undefined,
+    signedText: truncated ? signedText.slice(0, previewEnd) : signedText,
     signedTextTruncated: truncated,
   };
 }
