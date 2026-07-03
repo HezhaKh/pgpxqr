@@ -45,7 +45,6 @@ interface VerifyResult {
   validButUntrustedKey?: boolean;
   warnings?: string[];
   signedText?: string;
-  signedTextTruncated?: boolean;
 }
 
 function groupFingerprint(hex: string): string {
@@ -220,6 +219,22 @@ export default function Home() {
       return `✔ Signature is VALID — made by key ${keyIds}, one of ${keyCount} keys the keyserver returned for ${result?.email}. Check the fingerprint below.`;
     }
     return `✔ Signature is VALID and matches the key found for ${result?.email}`;
+  }
+
+  function downloadContent() {
+    if (!result?.signedText) return;
+    // Name the file after the uploaded one, minus the armor extension.
+    const base = fileName?.replace(/\.(asc|sig|pgp|gpg)$/i, "");
+    const name = base && base.length > 0 ? base : "verified-content.txt";
+    const blob = new Blob([result.signedText], {
+      type: "text/plain;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   function cautionBannerText(): string {
@@ -401,17 +416,26 @@ export default function Home() {
             </div>
           )}
 
-          {result.signedText !== undefined && result.signedText !== "" && (
-            <div className="card">
-              <h2>Signed content</h2>
-              <pre className="signed-text">{result.signedText}</pre>
-              {result.signedTextTruncated && (
-                <p className="hint">
-                  Preview truncated — the full signed content was verified.
-                </p>
-              )}
-            </div>
-          )}
+          {(verdict === "good" || verdict === "caution") &&
+            result.signedText !== undefined &&
+            result.signedText !== "" && (
+              <div className="card">
+                <h2>Verified content</h2>
+                <div className="download-row">
+                  <button
+                    type="button"
+                    className="primary"
+                    onClick={downloadContent}
+                  >
+                    ⬇ Download content
+                  </button>
+                  <span className="hint">
+                    Saves the signed content exactly as verified, without the
+                    PGP armor.
+                  </span>
+                </div>
+              </div>
+            )}
         </section>
       )}
 

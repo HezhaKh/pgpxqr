@@ -5,7 +5,6 @@ const MAX_KEYSERVER_RESPONSE_BYTES = 8 * 1024 * 1024; // flooded keys can be ten
 const MAX_KEYS_CHECKED = 25;
 const MAX_SIGNATURES_CHECKED = 10;
 const KEYSERVER_TIMEOUT_MS = 8000;
-const SIGNED_TEXT_PREVIEW_CHARS = 5000;
 
 // Overridable so tests can point at a local mock keyserver.
 const VKS_BASE = process.env.KEYSERVER_VKS_BASE ?? "https://keys.openpgp.org";
@@ -58,8 +57,9 @@ export interface VerifyResult {
   anyInvalid?: boolean;
   validButUntrustedKey?: boolean;
   warnings?: string[];
+  // Full verified cleartext (bounded by the 2 MB input cap), so the client
+  // can offer it as a download.
   signedText?: string;
-  signedTextTruncated?: boolean;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -524,16 +524,6 @@ export async function verifyClearsigned(
 
   const keyInfos = await Promise.all(keys.map(describeKey));
 
-  const truncated = signedText.length > SIGNED_TEXT_PREVIEW_CHARS;
-  let previewEnd = SIGNED_TEXT_PREVIEW_CHARS;
-  // Don't split a surrogate pair at the truncation point.
-  if (
-    truncated &&
-    (signedText.codePointAt(SIGNED_TEXT_PREVIEW_CHARS - 1) ?? 0) > 0xffff
-  ) {
-    previewEnd = SIGNED_TEXT_PREVIEW_CHARS - 1;
-  }
-
   return {
     ok: true,
     email: trimmedEmail,
@@ -550,7 +540,6 @@ export async function verifyClearsigned(
     anyInvalid,
     validButUntrustedKey,
     warnings: warnings.length > 0 ? warnings : undefined,
-    signedText: truncated ? signedText.slice(0, previewEnd) : signedText,
-    signedTextTruncated: truncated,
+    signedText,
   };
 }
