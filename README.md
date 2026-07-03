@@ -1,36 +1,45 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# GPG Checker
 
-## Getting Started
+Verify PGP **clearsigned** messages against a signer's email address.
 
-First, run the development server:
+Give it an email and a clearsigned message (pasted or loaded from a file). It:
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+1. Looks up the public key for that email on [keys.openpgp.org](https://keys.openpgp.org)
+   (VKS API), falling back to [keyserver.ubuntu.com](https://keyserver.ubuntu.com) (HKP API).
+2. Shows the key's fingerprint, algorithm, creation/expiry dates, user IDs, and
+   revocation status.
+3. Verifies the clearsign signature with [OpenPGP.js](https://openpgpjs.org/) and
+   reports exactly which key made each signature.
+
+Verification runs server-side. Keys are fetched live; nothing is stored.
+
+> **Trust note:** keyserver.ubuntu.com does not verify email ownership — anyone can
+> upload a key with any email. A "valid" result there means the message was signed by
+> *a* key associated with that email on the keyserver, so always confirm the displayed
+> fingerprint through another channel. keys.openpgp.org results are stronger: it only
+> serves keys whose email address was confirmed by the key owner.
+
+## API
+
+`POST /api/verify` with JSON body:
+
+```json
+{ "email": "someone@example.org", "message": "-----BEGIN PGP SIGNED MESSAGE-----..." }
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Returns key info, per-signature verdicts (`valid` / `invalid` / `no-matching-key`),
+and the signed content. Maximum message size: 2 MB.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Development
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm install
+npm run dev
+```
 
-## Learn More
+For tests, the keyserver base URLs can be overridden with `KEYSERVER_VKS_BASE` and
+`KEYSERVER_HKP_BASE` to point at a mock server.
 
-To learn more about Next.js, take a look at the following resources:
+## Deploy
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Deployed on [Vercel](https://vercel.com) (Next.js App Router, Node.js runtime).
