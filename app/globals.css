@@ -100,8 +100,7 @@ label {
   font-size: 0.85rem;
 }
 
-input[type="email"],
-textarea {
+input[type="email"] {
   width: 100%;
   padding: 0.6rem 0.75rem;
   border: 1px solid var(--border);
@@ -112,16 +111,7 @@ textarea {
   margin-bottom: 1rem;
 }
 
-textarea {
-  min-height: 240px;
-  font-family: var(--font-geist-mono, ui-monospace, monospace);
-  font-size: 0.8rem;
-  resize: vertical;
-  white-space: pre;
-}
-
-input:focus,
-textarea:focus {
+input:focus {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }

@@ -2,7 +2,7 @@
 
 Verify PGP **clearsigned** messages against a signer's email address.
 
-Give it an email and a clearsigned message (pasted or loaded from a file). It:
+Give it an email and a clearsigned file. It:
 
 1. Looks up the public key for that email on [keys.openpgp.org](https://keys.openpgp.org)
    (VKS API), falling back to [keyserver.ubuntu.com](https://keyserver.ubuntu.com) (HKP API).

@@ -168,6 +168,10 @@ export default function Home() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (message === "") {
+      setNetError("Load a clearsigned file first.");
+      return;
+    }
     // Mirror the server's byte-based gate so users get an honest error even
     // though JSON escaping inflates the request body.
     if (new TextEncoder().encode(message).length > 2 * 1024 * 1024) {
@@ -257,7 +261,7 @@ export default function Home() {
     <main>
       <h1>GPG Checker</h1>
       <p className="subtitle">
-        Enter an email address and a clearsigned message. The signer&apos;s
+        Enter an email address and load a clearsigned file. The signer&apos;s
         public key is looked up on{" "}
         <a href="https://keys.openpgp.org" target="_blank" rel="noreferrer">
           keys.openpgp.org
@@ -278,35 +282,23 @@ export default function Home() {
           autoComplete="email"
         />
 
-        <label htmlFor="message">
-          Clearsigned message{" "}
+        <label>
+          Clearsigned file{" "}
           <span className="hint">
-            (starts with &ldquo;-----BEGIN PGP SIGNED MESSAGE-----&rdquo;)
+            (contains &ldquo;-----BEGIN PGP SIGNED MESSAGE-----&rdquo;)
           </span>
         </label>
-        <textarea
-          id="message"
-          required
-          spellCheck={false}
-          placeholder={
-            "-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA256\n\n…\n-----BEGIN PGP SIGNATURE-----\n…\n-----END PGP SIGNATURE-----"
-          }
-          value={message}
-          onChange={(e) => {
-            setMessage(e.target.value);
-            setFileName(null);
-          }}
-        />
-
         <div className="form-row">
           <button
             type="button"
             className="secondary"
             onClick={() => fileInput.current?.click()}
           >
-            Load from file…
+            {fileName ? "Choose a different file…" : "Load from file…"}
           </button>
-          {fileName && <span className="file-name">{fileName}</span>}
+          <span className="file-name">
+            {fileName ?? "no file loaded"}
+          </span>
           <input
             ref={fileInput}
             type="file"
@@ -317,7 +309,11 @@ export default function Home() {
               e.target.value = "";
             }}
           />
-          <button type="submit" disabled={loading} className="primary">
+          <button
+            type="submit"
+            disabled={loading || message === ""}
+            className="primary"
+          >
             {loading ? "Verifying…" : "Verify"}
           </button>
         </div>
