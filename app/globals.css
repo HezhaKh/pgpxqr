@@ -1,11 +1,17 @@
 :root {
-  --bg: #f2f5f4;
-  --fg: #14201c;
-  --muted: #566660;
-  --card-bg: #ffffff;
-  --border: #d5dedb;
-  --accent: #0f766e;
-  --accent-strong: #0b5d57;
+  /* Luminous teal duotone — light */
+  --bg: #e9f3f1;
+  --bg-2: #f3faf8;
+  --surface: #ffffff;
+  --surface-2: #f4faf9;
+  --card-bg: var(--surface);
+  --fg: #0d211c;
+  --muted: #4d635d;
+  --border: #cadfd9;
+  --border-bright: #a9d2c9;
+  --accent: #0d7d72;
+  --accent-strong: #0a5b53;
+  --accent-bright: #12a596;
   --accent-fg: #ffffff;
   --good-bg: #e1f2e5;
   --good-fg: #17652c;
@@ -16,23 +22,33 @@
   --warn-bg: #fbf0d8;
   --warn-fg: #74510f;
   --warn-border: #dfc07a;
-  --code-bg: #e9efed;
-  --watermark-opacity: 0.045;
+  --code-bg: #e4efec;
+  --glow: rgba(15, 150, 136, 0.22);
+  --seal-glint: #17c3b1;
+  --bg-field-opacity: 0.6;
+  --bg-field-blend: normal;
+  --grain-opacity: 0.04;
   --mono: var(--font-geist-mono, ui-monospace, "Cascadia Mono", monospace);
   --sans: var(--font-geist-sans, system-ui, -apple-system, sans-serif);
   --pixel: var(--font-pixel, var(--font-geist-mono, ui-monospace, monospace));
 }
 
+/* Luminous teal duotone — dark. Applies from the OS setting only when the user
+   hasn't picked a theme via the logo; an explicit [data-theme] always wins. */
 @media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0b100f;
-    --fg: #e2eae7;
-    --muted: #91a09b;
-    --card-bg: #141b19;
-    --border: #263330;
-    --accent: #2dd4bf;
+  :root:not([data-theme]) {
+    --bg: #050d0b;
+    --bg-2: #081512;
+    --surface: #0c1a16;
+    --surface-2: #0f2019;
+    --fg: #dcece7;
+    --muted: #7f9791;
+    --border: #1c322c;
+    --border-bright: #2b4b42;
+    --accent: #34e6cf;
     --accent-strong: #5eead4;
-    --accent-fg: #06201c;
+    --accent-bright: #7ff6e7;
+    --accent-fg: #04201c;
     --good-bg: #12291a;
     --good-fg: #82d796;
     --good-border: #2b5b38;
@@ -42,9 +58,43 @@
     --warn-bg: #2f2611;
     --warn-fg: #e4bc6a;
     --warn-border: #6b5525;
-    --code-bg: #1d2724;
-    --watermark-opacity: 0.06;
+    --code-bg: #12211d;
+    --glow: rgba(52, 230, 207, 0.34);
+    --seal-glint: #baffed;
+    --bg-field-opacity: 0.5;
+    --bg-field-blend: screen;
+    --grain-opacity: 0.05;
   }
+}
+
+:root[data-theme="dark"] {
+  --bg: #050d0b;
+  --bg-2: #081512;
+  --surface: #0c1a16;
+  --surface-2: #0f2019;
+  --fg: #dcece7;
+  --muted: #7f9791;
+  --border: #1c322c;
+  --border-bright: #2b4b42;
+  --accent: #34e6cf;
+  --accent-strong: #5eead4;
+  --accent-bright: #7ff6e7;
+  --accent-fg: #04201c;
+  --good-bg: #12291a;
+  --good-fg: #82d796;
+  --good-border: #2b5b38;
+  --bad-bg: #321719;
+  --bad-fg: #ec9a9a;
+  --bad-border: #6b2f33;
+  --warn-bg: #2f2611;
+  --warn-fg: #e4bc6a;
+  --warn-border: #6b5525;
+  --code-bg: #12211d;
+  --glow: rgba(52, 230, 207, 0.34);
+  --seal-glint: #baffed;
+  --bg-field-opacity: 0.5;
+  --bg-field-blend: screen;
+  --grain-opacity: 0.05;
 }
 
 * {
@@ -55,6 +105,7 @@
 
 html {
   color-scheme: light dark;
+  font-size: 110%; /* scale the whole UI up a touch */
 }
 
 body {
@@ -66,37 +117,153 @@ body {
 
 main {
   position: relative;
-  max-width: 780px;
+  z-index: 1;
+  max-width: 820px;
   margin: 0 auto;
   padding: 3rem 1.25rem 4rem;
 }
 
-/* Giant seal ghosted into the ground, clipped to the viewport */
-.watermark {
+/* Layered background: teal light-field image + soft glow + grain */
+.bg-grad,
+.bg-field,
+.bg-grain {
   position: fixed;
-  top: -160px;
-  right: -180px;
-  color: var(--accent);
-  opacity: var(--watermark-opacity);
+  inset: 0;
   pointer-events: none;
   z-index: 0;
 }
 
-main > *:not(.watermark) {
-  position: relative;
-  z-index: 1;
+.bg-grad {
+  background:
+    radial-gradient(1100px 700px at 80% -10%, var(--glow), transparent 60%),
+    radial-gradient(900px 620px at 4% 108%, var(--glow), transparent 55%);
+}
+
+.bg-field {
+  background: url("/bg-field.png") center / cover no-repeat;
+  opacity: var(--bg-field-opacity);
+  mix-blend-mode: var(--bg-field-blend);
+}
+
+.bg-grain {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='140' height='140' filter='url(%23n)'/></svg>");
+  opacity: var(--grain-opacity);
 }
 
 .masthead {
   display: flex;
   align-items: center;
   gap: 0.9rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.55rem;
 }
 
+/* BEGIN armor line: full-width under the masthead so it shares the same left
+   edge as the END line in the footer (a matched pair framing the content). */
+.armor-top {
+  margin-top: 0;
+  margin-bottom: 1.5rem;
+}
+
+/* The seal doubles as a theme toggle. Its own strokes glow (a breathing
+   drop-shadow) and a bright glint sweeps ALONG the pixels — the moving
+   highlight is masked to the seal shape, so it lights the logo itself rather
+   than a disc around it. */
 .masthead-seal {
-  color: var(--accent);
+  position: relative;
   display: inline-flex;
+  padding: 6px;
+  margin: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  line-height: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.masthead-seal svg {
+  position: relative;
+  z-index: 2;
+  display: block;
+  animation: seal-glow 3.6s ease-in-out infinite;
+}
+
+.masthead-seal:hover svg {
+  animation-duration: 1.8s;
+}
+
+/* Bright glint band, clipped to the seal's strokes, sweeping across them. */
+.seal-glint {
+  --seal-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'><g fill='none' stroke='white' stroke-linecap='round' stroke-linejoin='round'><path d='M24 4 L6.7 14 V34 L24 44 L41.3 34 V14 Z' stroke-width='3'/><circle cx='24' cy='24' r='14.5' stroke-width='2.6' stroke-dasharray='30 9 18 12' transform='rotate(-35 24 24)'/><circle cx='24' cy='24' r='9.5' stroke-width='2.6' stroke-dasharray='20 7 12 8' transform='rotate(70 24 24)'/><circle cx='24' cy='24' r='5' stroke-width='2.6' stroke-dasharray='14 5 6 4' transform='rotate(180 24 24)'/><circle cx='24' cy='24' r='2.4' fill='white'/></g></svg>");
+  position: absolute;
+  inset: 6px;
+  z-index: 3;
+  pointer-events: none;
+  overflow: hidden;
+  mix-blend-mode: screen;
+  -webkit-mask-image: var(--seal-mask);
+  mask-image: var(--seal-mask);
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+}
+.seal-glint::before {
+  content: "";
+  position: absolute;
+  inset: -60%;
+  background: linear-gradient(
+    66deg,
+    transparent 42%,
+    var(--seal-glint) 48%,
+    #ffffff 50%,
+    var(--seal-glint) 52%,
+    transparent 58%
+  );
+  animation: seal-sweep 4.4s ease-in-out infinite;
+}
+
+@keyframes seal-glow {
+  0%, 100% { filter: drop-shadow(0 0 1.5px var(--seal-glint)); }
+  50% { filter: drop-shadow(0 0 5px var(--seal-glint)); }
+}
+@keyframes seal-sweep {
+  0% { transform: translateX(-70%); }
+  60%, 100% { transform: translateX(70%); }
+}
+
+/* Full-page Matrix rain + wipe edge shown during a theme switch. */
+.matrix-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  display: block;
+}
+
+.wipe-edge {
+  position: fixed;
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 51;
+  pointer-events: none;
+  background: var(--seal-glint);
+  box-shadow: 0 0 12px 2px var(--seal-glint);
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .masthead-seal svg {
+    animation: none;
+    filter: drop-shadow(0 0 3px var(--seal-glint));
+  }
+  .seal-glint::before {
+    animation: none;
+  }
 }
 
 h1 {
@@ -150,11 +317,13 @@ a:hover {
 }
 
 .card {
-  background: var(--card-bg);
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 1.4rem;
+  border-radius: 12px;
+  padding: 1.5rem;
   margin-bottom: 1.25rem;
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--border-bright) 40%, transparent) inset,
+    0 18px 40px -30px var(--glow);
 }
 
 label {
@@ -279,15 +448,16 @@ button {
 }
 
 button.primary {
-  background: var(--accent);
+  background: linear-gradient(180deg, var(--accent-bright), var(--accent));
   color: var(--accent-fg);
-  border-color: var(--accent);
+  border-color: transparent;
   margin-left: auto;
+  box-shadow: 0 8px 22px -12px var(--glow);
 }
 
 button.primary:hover:not(:disabled) {
-  background: var(--accent-strong);
-  border-color: var(--accent-strong);
+  filter: brightness(1.07);
+  border-color: transparent;
 }
 
 button.primary:disabled {
@@ -347,6 +517,169 @@ button.secondary:hover {
   border-color: var(--warn-border);
   box-shadow: 3px 3px 0 var(--warn-border),
     6px 6px 0 color-mix(in srgb, var(--warn-border) 40%, transparent);
+}
+
+/* --- Tailored result banners --- */
+/* Extra tones beyond good/bad/warn: a calm neutral for "no key found", a warm
+   coral for fixable input, and a cool indigo for transient service issues. */
+:root {
+  --nokey-bg: #e8eef2;
+  --nokey-fg: #37546a;
+  --nokey-border: #b9ccd9;
+  --input-bg: #fce9e1;
+  --input-fg: #9a3f22;
+  --input-border: #ecb9a2;
+  --svc-bg: #e9ecf6;
+  --svc-fg: #3f4f7d;
+  --svc-border: #c3c9e2;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --nokey-bg: #121e26;
+    --nokey-fg: #a2c0d2;
+    --nokey-border: #294050;
+    --input-bg: #2c1a12;
+    --input-fg: #eeaa86;
+    --input-border: #5a3325;
+    --svc-bg: #161d2f;
+    --svc-fg: #a9b6e4;
+    --svc-border: #313d60;
+  }
+}
+:root[data-theme="dark"] {
+  --nokey-bg: #121e26;
+  --nokey-fg: #a2c0d2;
+  --nokey-border: #294050;
+  --input-bg: #2c1a12;
+  --input-fg: #eeaa86;
+  --input-border: #5a3325;
+  --svc-bg: #161d2f;
+  --svc-fg: #a9b6e4;
+  --svc-border: #313d60;
+}
+
+.rb {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  border: 2px solid;
+  border-radius: 9px;
+  padding: 0.9rem 1.05rem;
+  margin-bottom: 1rem;
+  font-family: var(--mono);
+  overflow-wrap: anywhere;
+  animation: rb-enter 0.42s ease both;
+}
+.rb-glyph {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  height: 1.5em;
+}
+.rb-glyph .pixel-glyph {
+  height: 1.2em;
+}
+.rb-body {
+  min-width: 0;
+}
+.rb-eyebrow {
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  opacity: 0.82;
+  margin-bottom: 0.22rem;
+}
+.rb-msg {
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.42;
+}
+
+.rb-verified {
+  background: var(--good-bg);
+  color: var(--good-fg);
+  border-color: var(--good-border);
+  box-shadow: 3px 3px 0 var(--good-border), 0 0 26px -6px var(--good-fg);
+  animation: rb-stamp 0.5s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+.rb-invalid {
+  background: var(--bad-bg);
+  color: var(--bad-fg);
+  border-color: var(--bad-border);
+  box-shadow: 3px 3px 0 var(--bad-border);
+  animation: rb-shake 0.55s ease both;
+}
+.rb-caution {
+  background: var(--warn-bg);
+  color: var(--warn-fg);
+  border-color: var(--warn-border);
+  box-shadow: 3px 3px 0 var(--warn-border);
+  animation: rb-enter 0.42s ease both, rb-glowpulse 2.6s ease-in-out 0.5s infinite;
+}
+.rb-nokey {
+  background: var(--nokey-bg);
+  color: var(--nokey-fg);
+  border-color: var(--nokey-border);
+  box-shadow: 3px 3px 0 var(--nokey-border);
+  animation: rb-settle 0.5s ease both;
+}
+.rb-input {
+  background: var(--input-bg);
+  color: var(--input-fg);
+  border-color: var(--input-border);
+  box-shadow: 3px 3px 0 var(--input-border);
+  animation: rb-nudge 0.52s ease both;
+}
+.rb-service {
+  background: var(--svc-bg);
+  color: var(--svc-fg);
+  border-color: var(--svc-border);
+  box-shadow: 3px 3px 0 var(--svc-border);
+  animation: rb-enter 0.42s ease both, rb-breathe 2.8s ease-in-out 0.5s infinite;
+}
+
+@keyframes rb-enter {
+  from { opacity: 0; transform: translateY(-7px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes rb-stamp {
+  0% { opacity: 0; transform: scale(1.18) rotate(-1.5deg); }
+  55% { opacity: 1; transform: scale(0.97) rotate(0.5deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+@keyframes rb-shake {
+  0% { opacity: 0; transform: translateX(0); }
+  12% { opacity: 1; }
+  20% { transform: translateX(-8px); }
+  36% { transform: translateX(7px); }
+  52% { transform: translateX(-4px); }
+  68% { transform: translateX(3px); }
+  84% { transform: translateX(-1px); }
+  100% { transform: translateX(0); }
+}
+@keyframes rb-settle {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes rb-nudge {
+  0% { opacity: 0; transform: translateX(-11px); }
+  62% { opacity: 1; transform: translateX(3px); }
+  100% { transform: translateX(0); }
+}
+@keyframes rb-glowpulse {
+  0%, 100% { box-shadow: 3px 3px 0 var(--warn-border); }
+  50% { box-shadow: 3px 3px 0 var(--warn-border), 0 0 18px -2px var(--warn-fg); }
+}
+@keyframes rb-breathe {
+  0%, 100% { opacity: 0.9; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rb {
+    animation: rb-settle 0.3s ease both !important;
+  }
 }
 
 .keyserver-line {
@@ -554,7 +887,7 @@ footer .armor-line {
     margin-top: 0.55rem;
   }
 
-  .watermark {
+  .panel {
     display: none;
   }
 }

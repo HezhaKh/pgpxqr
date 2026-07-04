@@ -49,10 +49,19 @@ export interface SignatureInfo {
   signerExpired?: boolean;
 }
 
+export type ErrorKind =
+  | "invalid-email"
+  | "not-clearsigned"
+  | "no-key"
+  | "key-parse"
+  | "keyserver-unavailable"
+  | "verify-failed"
+  | "unexpected";
+
 export interface VerifyResult {
   ok: boolean;
   error?: string;
-  errorKind?: "keyserver-unavailable";
+  errorKind?: ErrorKind;
   email: string;
   keyserver?: Keyserver;
   keyserverNote?: string;
@@ -453,21 +462,32 @@ export async function verifyClearsigned(
 ): Promise<VerifyResult> {
   const trimmedEmail = email.trim().toLowerCase();
   if (!isValidEmail(trimmedEmail)) {
-    return { ok: false, email, error: "Invalid email address." };
+    return {
+      ok: false,
+      email,
+      errorKind: "invalid-email",
+      error: "That doesn't look like a valid email address.",
+    };
   }
 
   if (!clearsignedText.includes("-----BEGIN PGP SIGNED MESSAGE-----")) {
     return {
       ok: false,
       email: trimmedEmail,
+      errorKind: "not-clearsigned",
       error:
-        "Input is not a clearsigned message. It must start with '-----BEGIN PGP SIGNED MESSAGE-----'. Detached signatures and encrypted messages are not supported.",
+        "This file isn't a clearsigned message. It must contain '-----BEGIN PGP SIGNED MESSAGE-----'. Detached signatures and encrypted messages aren't supported.",
     };
   }
 
   const structureError = validateSingleClearsignBlock(clearsignedText);
   if (structureError) {
-    return { ok: false, email: trimmedEmail, error: structureError };
+    return {
+      ok: false,
+      email: trimmedEmail,
+      errorKind: "not-clearsigned",
+      error: structureError,
+    };
   }
 
   let message: openpgp.CleartextMessage;
@@ -480,7 +500,8 @@ export async function verifyClearsigned(
     return {
       ok: false,
       email: trimmedEmail,
-      error: "Could not parse the input as a clearsigned PGP message.",
+      errorKind: "not-clearsigned",
+      error: "This file couldn't be parsed as a clearsigned PGP message.",
     };
   }
 
@@ -499,8 +520,9 @@ export async function verifyClearsigned(
     return {
       ok: false,
       email: trimmedEmail,
+      errorKind: "no-key",
       error:
-        "No public key found for this email on keys.openpgp.org or keyserver.ubuntu.com.",
+        "No public key is published for this email on keys.openpgp.org or keyserver.ubuntu.com.",
     };
   }
 
@@ -515,7 +537,8 @@ export async function verifyClearsigned(
       ok: false,
       email: trimmedEmail,
       keyserver: lookup.keyserver,
-      error: "The keyserver returned data that could not be parsed as a PGP key.",
+      errorKind: "key-parse",
+      error: "The keyserver returned data that couldn't be parsed as a PGP key.",
     };
   }
 
@@ -524,7 +547,8 @@ export async function verifyClearsigned(
       ok: false,
       email: trimmedEmail,
       keyserver: lookup.keyserver,
-      error: "Keyserver response contained no usable keys.",
+      errorKind: "key-parse",
+      error: "The keyserver response contained no usable keys.",
     };
   }
 
@@ -575,7 +599,8 @@ export async function verifyClearsigned(
       email: trimmedEmail,
       keyserver: lookup.keyserver,
       keys: await Promise.all(keys.map(describeKey)),
-      error: "Signature verification failed.",
+      errorKind: "verify-failed",
+      error: "Something went wrong while verifying the signature.",
     };
   }
 

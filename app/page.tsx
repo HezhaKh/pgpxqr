@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface SubkeyInfo {
   keyId: string;
@@ -152,6 +152,22 @@ const GLYPH_GRIDS = {
 .#####.
 ..###..
 ...#...`,
+  lines: `
+.......
+#######
+.......
+#####..
+.......
+#######
+.......`,
+  hourglass: `
+#######
+.#####.
+..###..
+...#...
+..###..
+.#####.
+#######`,
 } as const;
 
 // Rippling pixel seal shown while a verification is in flight.
@@ -307,6 +323,185 @@ const SIG_LABEL: Record<
   },
 };
 
+// Each result gets a tone: its own color, glyph, eyebrow label, and entrance
+// animation, so an invalid signature, a missing key, a malformed file, and a
+// keyserver outage never look like the same generic error.
+type Tone = "verified" | "invalid" | "caution" | "nokey" | "input" | "service";
+
+const TONE_META: Record<
+  Tone,
+  { eyebrow: string; glyph: keyof typeof GLYPH_GRIDS }
+> = {
+  verified: { eyebrow: "Verified", glyph: "check" },
+  invalid: { eyebrow: "Invalid signature", glyph: "cross" },
+  caution: { eyebrow: "Caution", glyph: "warn" },
+  nokey: { eyebrow: "No key found", glyph: "question" },
+  input: { eyebrow: "Check your input", glyph: "lines" },
+  service: { eyebrow: "Temporary issue", glyph: "hourglass" },
+};
+
+function errorTone(kind?: string): Tone {
+  switch (kind) {
+    case "invalid-email":
+    case "not-clearsigned":
+      return "input";
+    case "no-key":
+      return "nokey";
+    default:
+      // keyserver-unavailable, key-parse, verify-failed, unexpected, network
+      return "service";
+  }
+}
+
+function ResultBanner({
+  tone,
+  message,
+  eyebrow,
+}: {
+  tone: Tone;
+  message: string;
+  eyebrow?: string;
+}) {
+  const meta = TONE_META[tone];
+  return (
+    <div className={`rb rb-${tone}`} role="status" aria-live="polite">
+      <span className="rb-glyph" aria-hidden="true">
+        <PixelGlyph kind={meta.glyph} />
+      </span>
+      <div className="rb-body">
+        <div className="rb-eyebrow">{eyebrow ?? meta.eyebrow}</div>
+        <div className="rb-msg">{message}</div>
+      </div>
+    </div>
+  );
+}
+
+// Full-page Matrix rain that fills, then a glowing blade-edge wipes upward to
+// reveal the newly themed page in sync. Slow and deliberate. Pure canvas.
+function MatrixRain({
+  fromDark,
+  onFlip,
+  onDone,
+}: {
+  fromDark: boolean;
+  onFlip: () => void;
+  onDone: () => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const edgeRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const edge = edgeRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) {
+      onFlip();
+      onDone();
+      return;
+    }
+
+    // The rain wears the theme it's leaving: dark rain when leaving dark,
+    // light rain (light veil, dark-teal glyphs) when leaving light.
+    const palette = fromDark
+      ? { bg: "rgba(4, 12, 10, 0.16)", lead: "#eafffb", trail: "#2fe3cd" }
+      : { bg: "rgba(228, 240, 238, 0.2)", lead: "#06403a", trail: "#159c8e" };
+
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    let width = window.innerWidth;
+    let height = window.innerHeight;
+    const resize = () => {
+      width = window.innerWidth;
+      height = window.innerHeight;
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(height * dpr);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.textBaseline = "top";
+    };
+    resize();
+    canvas.style.clipPath = "inset(0 0 0 0)";
+    canvas.style.opacity = "0"; // start invisible; the intro fades it in
+    window.addEventListener("resize", resize);
+
+    const fontSize = Math.max(15, Math.round(width / 62));
+    const step = fontSize * 1.8;
+    const cols = Math.ceil(width / step);
+    const drops = Array.from({ length: cols }, () => Math.random() * -26);
+    const HEX = "0123456789ABCDEF";
+    const pair = () =>
+      HEX[(Math.random() * 16) | 0] + HEX[(Math.random() * 16) | 0];
+
+    const INTRO = 380; // rain fades in smoothly over the page (no hard cut)
+    const FILL = 830; // rain fully up, then the reveal begins
+    const WIPE = 1150; // reveal chases the rain DOWNWARD, top -> bottom
+    const start = performance.now();
+    let flipped = false;
+    let raf = 0;
+
+    const frame = (now: number) => {
+      const t = now - start;
+      // Smooth intro: ease the whole overlay in rather than snapping to a dark
+      // screen on the first frame.
+      if (t < INTRO) {
+        const e = t / INTRO;
+        canvas.style.opacity = (e * e * (3 - 2 * e)).toFixed(3); // smoothstep
+      } else {
+        canvas.style.opacity = "1";
+      }
+
+      ctx.fillStyle = palette.bg;
+      ctx.fillRect(0, 0, width, height);
+      ctx.font = `700 ${fontSize}px monospace`;
+      for (let i = 0; i < cols; i++) {
+        const x = i * step;
+        const y = drops[i] * fontSize;
+        ctx.fillStyle = palette.lead;
+        ctx.fillText(pair(), x, y);
+        ctx.fillStyle = palette.trail;
+        ctx.fillText(pair(), x, y - fontSize);
+        if (y > height && Math.random() > 0.975) drops[i] = Math.random() * -8;
+        drops[i] += 0.42 + Math.random() * 0.3;
+      }
+
+      if (t >= FILL) {
+        if (!flipped) {
+          flipped = true;
+          onFlip();
+        }
+        const wp = Math.min((t - FILL) / WIPE, 1);
+        const eased = wp < 0.5 ? 2 * wp * wp : 1 - Math.pow(-2 * wp + 2, 2) / 2;
+        // Clip the TOP of the rain away so the new theme is revealed from the
+        // top downward, chasing the falling rain instead of fighting it.
+        canvas.style.clipPath = `inset(${eased * 100}% 0 0 0)`;
+        if (edge) {
+          edge.style.opacity = wp < 1 ? "1" : "0";
+          edge.style.top = `${eased * height}px`;
+        }
+        if (wp >= 1) {
+          window.removeEventListener("resize", resize);
+          onDone();
+          return;
+        }
+      }
+      raf = requestAnimationFrame(frame);
+    };
+    raf = requestAnimationFrame(frame);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", resize);
+    };
+  }, [fromDark, onFlip, onDone]);
+
+  return (
+    <>
+      <canvas ref={canvasRef} className="matrix-overlay" aria-hidden="true" />
+      <div ref={edgeRef} className="wipe-edge" aria-hidden="true" />
+    </>
+  );
+}
+
 export default function Home() {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
@@ -314,7 +509,37 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<VerifyResult | null>(null);
   const [netError, setNetError] = useState<string | null>(null);
+  const [matrixActive, setMatrixActive] = useState(false);
+  const [matrixFromDark, setMatrixFromDark] = useState(true);
   const fileInput = useRef<HTMLInputElement>(null);
+
+  // Session-only theme override: an explicit data-theme wins over the OS
+  // setting (see globals.css); nothing is persisted, so a reload reverts to
+  // the system preference.
+  const flipTheme = useCallback(() => {
+    const root = document.documentElement;
+    const explicit = root.getAttribute("data-theme");
+    const isDark = explicit
+      ? explicit === "dark"
+      : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    root.setAttribute("data-theme", isDark ? "light" : "dark");
+  }, []);
+
+  const endMatrix = useCallback(() => setMatrixActive(false), []);
+
+  const onLogoClick = useCallback(() => {
+    if (matrixActive) return;
+    const explicit = document.documentElement.getAttribute("data-theme");
+    const isDark = explicit
+      ? explicit === "dark"
+      : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      flipTheme();
+      return;
+    }
+    setMatrixFromDark(isDark);
+    setMatrixActive(true);
+  }, [matrixActive, flipTheme]);
 
   async function onFileChosen(file: File) {
     if (file.size > 2 * 1024 * 1024) {
@@ -439,20 +664,25 @@ export default function Home() {
   }
 
   return (
+    <>
+    <div className="bg-grad" aria-hidden="true" />
+    <div className="bg-field" aria-hidden="true" />
+    <div className="bg-grain" aria-hidden="true" />
     <main>
-      <div className="watermark" aria-hidden="true">
-        <SealMark size={520} />
-      </div>
-
       <header className="masthead">
-        <span className="masthead-seal">
-          <SealMark size={46} />
-        </span>
-        <div>
-          <h1>PGP Checker</h1>
-          <div className="armor-line">-----BEGIN VERIFICATION-----</div>
-        </div>
+        <button
+          type="button"
+          className="masthead-seal"
+          onClick={onLogoClick}
+          aria-label="Switch color theme"
+          title="Switch theme"
+        >
+          <span className="seal-glint" aria-hidden="true" />
+          <SealMark size={52} />
+        </button>
+        <h1>PGP Checker</h1>
       </header>
+      <div className="armor-line armor-top">-----BEGIN VERIFICATION-----</div>
       <form onSubmit={onSubmit} className="card">
         <label htmlFor="email">Signer&apos;s email address</label>
         <input
@@ -497,50 +727,39 @@ export default function Home() {
 
       {loading && <PixelLoader />}
 
-      {netError && <div className="banner banner-error">{netError}</div>}
+      {netError && (
+        <ResultBanner
+          tone="service"
+          eyebrow="Connection problem"
+          message={netError}
+        />
+      )}
 
       {result && (
         <section className="results">
-          <div
-            className={
+          <ResultBanner
+            tone={
               verdict === "good"
-                ? "banner banner-good"
+                ? "verified"
                 : verdict === "caution"
-                ? "banner banner-warn"
+                ? "caution"
                 : verdict === "bad"
-                ? "banner banner-bad"
-                : "banner banner-error"
+                ? "invalid"
+                : errorTone(result.errorKind)
             }
-          >
-            {verdict === "good" && (
-              <>
-                <PixelGlyph kind="check" /> {goodBannerText()}
-              </>
-            )}
-            {verdict === "caution" && (
-              <>
-                <PixelGlyph kind="warn" /> {cautionBannerText()}
-              </>
-            )}
-            {verdict === "bad" && (
-              <>
-                <PixelGlyph kind="cross" />{" "}
-                {"Signature did NOT verify against the key found for " +
-                  result.email}
-              </>
-            )}
-            {verdict === "error" && (
-              <>
-                <PixelGlyph kind="cross" />{" "}
-                {result.error ?? "Verification failed."}
-              </>
-            )}
-          </div>
+            message={
+              verdict === "good"
+                ? goodBannerText()
+                : verdict === "caution"
+                ? cautionBannerText()
+                : verdict === "bad"
+                ? `Signature did NOT verify against the key found for ${result.email}`
+                : result.error ?? "Verification failed."
+            }
+          />
 
           {result.warnings?.map((w) => (
-            <div key={w} className="banner banner-warn">
-              <PixelGlyph kind="warn" /> {w}
-            </div>
+            <ResultBanner key={w} tone="caution" eyebrow="Note" message={w} />
           ))}
 
           {result.keyserver && (
@@ -635,5 +854,13 @@ export default function Home() {
         <div className="armor-line">-----END VERIFICATION-----</div>
       </footer>
     </main>
+    {matrixActive && (
+      <MatrixRain
+        fromDark={matrixFromDark}
+        onFlip={flipTheme}
+        onDone={endMatrix}
+      />
+    )}
+    </>
   );
 }

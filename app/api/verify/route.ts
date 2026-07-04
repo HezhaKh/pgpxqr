@@ -87,7 +87,11 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     console.error("verify handler error:", e);
     return NextResponse.json(
-      { ok: false, error: "An unexpected error occurred." },
+      {
+        ok: false,
+        errorKind: "unexpected",
+        error: "Something went wrong on our side. Please try again.",
+      },
       { status: 500 }
     );
   }
