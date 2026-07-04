@@ -1,0 +1,8 @@
+# Security contact for PGP Checker (gpg.hk-hk.net)
+# https://gpg.hk-hk.net — verifies PGP clearsigned messages against a signer's email.
+# Please report vulnerabilities or abuse to the contact below.
+
+Contact: mailto:hezhaxe.hx@gmail.com
+Expires: 2027-07-04T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://gpg.hk-hk.net/.well-known/security.txt
