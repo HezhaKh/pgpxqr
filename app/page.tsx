@@ -153,6 +153,40 @@ const GLYPH_GRIDS = {
 ...#...`,
 } as const;
 
+// Rippling pixel seal shown while a verification is in flight.
+function PixelLoader() {
+  return (
+    <div className="loader" role="status" aria-live="polite">
+      <svg
+        viewBox="0 0 23 23"
+        className="loader-seal"
+        shapeRendering="crispEdges"
+        aria-hidden="true"
+        focusable="false"
+      >
+        {SEAL_RECTS.map(({ x, y }) => (
+          <rect
+            key={`${x}-${y}`}
+            x={x}
+            y={y}
+            width="1"
+            height="1"
+            fill="currentColor"
+            className="loader-px"
+            style={{
+              animationDelay: `${Math.round(
+                Math.hypot(x - 11, y - 11) * 90
+              )}ms`,
+            }}
+          />
+        ))}
+      </svg>
+      <div className="armor-line">-----VERIFYING-----</div>
+      <span className="sr-only">Verifying…</span>
+    </div>
+  );
+}
+
 function PixelGlyph({ kind }: { kind: keyof typeof GLYPH_GRIDS }) {
   const rows = GLYPH_GRIDS[kind].trim().split("\n");
   return (
@@ -408,18 +442,7 @@ export default function Home() {
           <div className="armor-line">-----BEGIN VERIFICATION-----</div>
         </div>
       </header>
-      <p className="subtitle">
-        Enter an email address and load a clearsigned file. The signer&apos;s
-        public key is looked up on{" "}
-        <a href="https://keys.openpgp.org" target="_blank" rel="noreferrer">
-          keys.openpgp.org
-        </a>{" "}
-        (falling back to keyserver.ubuntu.com), its fingerprint is shown, and
-        the signature is verified against it.
-      </p>
-
       <form onSubmit={onSubmit} className="card">
-        <h2>Verify a file</h2>
         <label htmlFor="email">Signer&apos;s email address</label>
         <input
           id="email"
@@ -431,23 +454,16 @@ export default function Home() {
           autoComplete="email"
         />
 
-        <label>
-          Clearsigned file{" "}
-          <span className="hint">
-            (contains &ldquo;-----BEGIN PGP SIGNED MESSAGE-----&rdquo;)
-          </span>
-        </label>
+        <label>Clearsigned file</label>
         <div className="form-row">
           <button
             type="button"
             className="secondary"
             onClick={() => fileInput.current?.click()}
           >
-            {fileName ? "Choose a different file…" : "Load from file…"}
+            {fileName ? "Change file…" : "Load from file…"}
           </button>
-          <span className="file-name">
-            {fileName ?? "no file loaded"}
-          </span>
+          {fileName && <span className="file-name">{fileName}</span>}
           <input
             ref={fileInput}
             type="file"
@@ -467,6 +483,8 @@ export default function Home() {
           </button>
         </div>
       </form>
+
+      {loading && <PixelLoader />}
 
       {netError && <div className="banner banner-error">{netError}</div>}
 
@@ -604,13 +622,6 @@ export default function Home() {
 
       <footer>
         <div className="armor-line">-----END VERIFICATION-----</div>
-        <p>
-          Verification runs server-side with{" "}
-          <a href="https://openpgpjs.org/" target="_blank" rel="noreferrer">
-            OpenPGP.js
-          </a>
-          . Keys are fetched live from public keyservers and nothing is stored.
-        </p>
       </footer>
     </main>
   );
