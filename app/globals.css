@@ -20,6 +20,7 @@
   --watermark-opacity: 0.045;
   --mono: var(--font-geist-mono, ui-monospace, "Cascadia Mono", monospace);
   --sans: var(--font-geist-sans, system-ui, -apple-system, sans-serif);
+  --pixel: var(--font-pixel, var(--font-geist-mono, ui-monospace, monospace));
 }
 
 @media (prefers-color-scheme: dark) {
@@ -99,11 +100,11 @@ main > *:not(.watermark) {
 }
 
 h1 {
-  font-family: var(--mono);
-  font-size: 1.45rem;
+  font-family: var(--pixel);
+  font-size: 1.35rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.06em;
   line-height: 1.2;
 }
 
@@ -117,13 +118,20 @@ h1 {
 }
 
 h2 {
-  font-family: var(--mono);
-  font-size: 0.72rem;
-  font-weight: 700;
+  font-family: var(--pixel);
+  font-size: 0.66rem;
+  font-weight: 400;
   text-transform: uppercase;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.1em;
   color: var(--muted);
   margin-bottom: 0.9rem;
+}
+
+.pixel-glyph {
+  height: 0.8em;
+  width: auto;
+  display: inline-block;
+  vertical-align: -0.02em;
 }
 
 .subtitle {
@@ -264,7 +272,8 @@ button.secondary:hover {
   background: var(--good-bg);
   color: var(--good-fg);
   border-color: var(--good-border);
-  box-shadow: 3px 3px 0 var(--good-border);
+  box-shadow: 3px 3px 0 var(--good-border),
+    6px 6px 0 color-mix(in srgb, var(--good-border) 40%, transparent);
 }
 
 .banner-bad,
@@ -272,14 +281,16 @@ button.secondary:hover {
   background: var(--bad-bg);
   color: var(--bad-fg);
   border-color: var(--bad-border);
-  box-shadow: 3px 3px 0 var(--bad-border);
+  box-shadow: 3px 3px 0 var(--bad-border),
+    6px 6px 0 color-mix(in srgb, var(--bad-border) 40%, transparent);
 }
 
 .banner-warn {
   background: var(--warn-bg);
   color: var(--warn-fg);
   border-color: var(--warn-border);
-  box-shadow: 3px 3px 0 var(--warn-border);
+  box-shadow: 3px 3px 0 var(--warn-border),
+    6px 6px 0 color-mix(in srgb, var(--warn-border) 40%, transparent);
 }
 
 .keyserver-line {

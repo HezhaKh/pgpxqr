@@ -47,57 +47,132 @@ interface VerifyResult {
   signedText?: string;
 }
 
+// Pixel-art fingerprint seal, drawn on a 23x23 grid.
+const SEAL_GRID = `
+...........#...........
+.........##.##.........
+.......##.....##.......
+.....##.........##.....
+...##....#####....##...
+..#....##.....#.....#..
+..#...##............#..
+..#..##..#####......#..
+..#..#..##...##.....#..
+..#.#..##.....##..#.#..
+..#.#..#.......#..#.#..
+..#.#..#...#...#..#.#..
+..#.#..#.......#..#.#..
+..#.#..#......##..#.#..
+..#..#.......##..#..#..
+..#..##...####..##..#..
+..#...##.......##...#..
+..#....##.....##....#..
+...##....#####....##...
+.....##.........##.....
+.......##.....##.......
+.........##.##.........
+...........#...........`;
+
+function gridToRects(grid: string): { x: number; y: number }[] {
+  return grid
+    .trim()
+    .split("\n")
+    .flatMap((row, y) =>
+      [...row].flatMap((ch, x) => (ch === "#" ? [{ x, y }] : []))
+    );
+}
+
+const SEAL_RECTS = gridToRects(SEAL_GRID);
+
 function SealMark({ size, className }: { size: number; className?: string }) {
   return (
     <svg
       className={className}
       width={size}
       height={size}
-      viewBox="0 0 48 48"
+      viewBox="0 0 23 23"
+      shapeRendering="crispEdges"
       aria-hidden="true"
       focusable="false"
     >
-      <path
-        d="M24 4 L6.7 14 V34 L24 44 L41.3 34 V14 Z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.4"
-        strokeLinejoin="round"
-      />
-      <circle
-        cx="24"
-        cy="24"
-        r="14.5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeDasharray="30 9 18 12"
-        transform="rotate(-35 24 24)"
-      />
-      <circle
-        cx="24"
-        cy="24"
-        r="9.5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeDasharray="20 7 12 8"
-        transform="rotate(70 24 24)"
-      />
-      <circle
-        cx="24"
-        cy="24"
-        r="5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeDasharray="14 5 6 4"
-        transform="rotate(180 24 24)"
-      />
-      <circle cx="24" cy="24" r="1.6" fill="currentColor" />
+      {SEAL_RECTS.map(({ x, y }) => (
+        <rect
+          key={`${x}-${y}`}
+          x={x}
+          y={y}
+          width="1"
+          height="1"
+          fill="currentColor"
+        />
+      ))}
+    </svg>
+  );
+}
+
+// Small pixel glyphs used in verdicts and buttons.
+const GLYPH_GRIDS = {
+  check: `
+......#
+.....##
+....##.
+#..##..
+#####..
+.###...
+..#....`,
+  cross: `
+#.....#
+##...##
+.##.##.
+..###..
+.##.##.
+##...##
+#.....#`,
+  warn: `
+..###..
+..###..
+..###..
+..###..
+.......
+..###..
+..###..`,
+  question: `
+.####..
+##..##.
+....##.
+...##..
+..##...
+.......
+..##...`,
+  down: `
+..###..
+..###..
+..###..
+#######
+.#####.
+..###..
+...#...`,
+} as const;
+
+function PixelGlyph({ kind }: { kind: keyof typeof GLYPH_GRIDS }) {
+  const rows = GLYPH_GRIDS[kind].trim().split("\n");
+  return (
+    <svg
+      viewBox={`0 0 ${rows[0].length} ${rows.length}`}
+      className="pixel-glyph"
+      shapeRendering="crispEdges"
+      aria-hidden="true"
+      focusable="false"
+    >
+      {gridToRects(GLYPH_GRIDS[kind]).map(({ x, y }) => (
+        <rect
+          key={`${x}-${y}`}
+          x={x}
+          y={y}
+          width="1"
+          height="1"
+          fill="currentColor"
+        />
+      ))}
     </svg>
   );
 }
@@ -185,10 +260,16 @@ function KeyCard({ info }: { info: KeyInfo }) {
   );
 }
 
-const SIG_LABEL: Record<SignatureInfo["status"], string> = {
-  valid: "✔ Valid signature",
-  invalid: "✘ INVALID signature",
-  "no-matching-key": "? Signature from a different key",
+const SIG_LABEL: Record<
+  SignatureInfo["status"],
+  { glyph: keyof typeof GLYPH_GRIDS; text: string }
+> = {
+  valid: { glyph: "check", text: "Valid signature" },
+  invalid: { glyph: "cross", text: "INVALID signature" },
+  "no-matching-key": {
+    glyph: "question",
+    text: "Signature from a different key",
+  },
 };
 
 export default function Home() {
@@ -275,9 +356,9 @@ export default function Home() {
   function goodBannerText(): string {
     const keyIds = matchedFprs.map((f) => f.slice(-16)).join(", ");
     if (keyCount > 1) {
-      return `✔ Signature is VALID — made by key ${keyIds}, one of ${keyCount} keys the keyserver returned for ${result?.email}. Check the fingerprint below.`;
+      return `Signature is VALID — made by key ${keyIds}, one of ${keyCount} keys the keyserver returned for ${result?.email}. Check the fingerprint below.`;
     }
-    return `✔ Signature is VALID and matches the key found for ${result?.email}`;
+    return `Signature is VALID and matches the key found for ${result?.email}`;
   }
 
   function downloadContent() {
@@ -309,7 +390,7 @@ export default function Home() {
     if (result?.anyInvalid) {
       parts.push("another signature on this message FAILED verification");
     }
-    return `⚠ A signature is cryptographically valid, but ${parts.join("; and ")}.`;
+    return `A signature is cryptographically valid, but ${parts.join("; and ")}.`;
   }
 
   return (
@@ -320,7 +401,7 @@ export default function Home() {
 
       <header className="masthead">
         <span className="masthead-seal">
-          <SealMark size={44} />
+          <SealMark size={46} />
         </span>
         <div>
           <h1>GPG Checker</h1>
@@ -402,17 +483,34 @@ export default function Home() {
                 : "banner banner-error"
             }
           >
-            {verdict === "good" && goodBannerText()}
-            {verdict === "caution" && cautionBannerText()}
-            {verdict === "bad" &&
-              "✘ Signature did NOT verify against the key found for " +
-                result.email}
-            {verdict === "error" && (result.error ?? "Verification failed.")}
+            {verdict === "good" && (
+              <>
+                <PixelGlyph kind="check" /> {goodBannerText()}
+              </>
+            )}
+            {verdict === "caution" && (
+              <>
+                <PixelGlyph kind="warn" /> {cautionBannerText()}
+              </>
+            )}
+            {verdict === "bad" && (
+              <>
+                <PixelGlyph kind="cross" />{" "}
+                {"Signature did NOT verify against the key found for " +
+                  result.email}
+              </>
+            )}
+            {verdict === "error" && (
+              <>
+                <PixelGlyph kind="cross" />{" "}
+                {result.error ?? "Verification failed."}
+              </>
+            )}
           </div>
 
           {result.warnings?.map((w) => (
             <div key={w} className="banner banner-warn">
-              ⚠ {w}
+              <PixelGlyph kind="warn" /> {w}
             </div>
           ))}
 
@@ -440,7 +538,8 @@ export default function Home() {
                     }`}
                   >
                     <div className="sig-status">
-                      {SIG_LABEL[sig.status]}
+                      <PixelGlyph kind={SIG_LABEL[sig.status].glyph} />{" "}
+                      {SIG_LABEL[sig.status].text}
                       {sig.status === "valid" && sig.signerRevoked && (
                         <span className="badge badge-bad">key now revoked</span>
                       )}
@@ -491,7 +590,7 @@ export default function Home() {
                     className="primary"
                     onClick={downloadContent}
                   >
-                    ⬇ Download content
+                    <PixelGlyph kind="down" /> Download content
                   </button>
                   <span className="hint">
                     Saves the signed content exactly as verified, without the
