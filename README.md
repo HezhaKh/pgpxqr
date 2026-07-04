@@ -1,4 +1,4 @@
-# GPG Checker
+# PGP Checker
 
 Verify PGP **clearsigned** messages against a signer's email address.
 

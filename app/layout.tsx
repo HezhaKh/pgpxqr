@@ -19,19 +19,19 @@ const silkscreen = Silkscreen({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://pgp.hk-hk.net"),
-  title: "GPG Checker",
+  metadataBase: new URL("https://gpg.hk-hk.net"),
+  title: "PGP Checker",
   description:
     "Verify PGP clearsigned messages: look up a key by email, see its fingerprint, and check the signature.",
   openGraph: {
-    title: "GPG Checker",
+    title: "PGP Checker",
     description:
       "Verify PGP clearsigned files against a signer's email. Keyserver lookup, fingerprint, verdict.",
     images: ["/og.png"],
   },
   twitter: {
     card: "summary_large_image",
-    title: "GPG Checker",
+    title: "PGP Checker",
     description:
       "Verify PGP clearsigned files against a signer's email. Keyserver lookup, fingerprint, verdict.",
     images: ["/og.png"],

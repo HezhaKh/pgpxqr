@@ -438,7 +438,7 @@ export default function Home() {
           <SealMark size={46} />
         </span>
         <div>
-          <h1>GPG Checker</h1>
+          <h1>PGP Checker</h1>
           <div className="armor-line">-----BEGIN VERIFICATION-----</div>
         </div>
       </header>
