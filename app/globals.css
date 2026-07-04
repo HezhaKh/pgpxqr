@@ -115,6 +115,15 @@ body {
   line-height: 1.55;
 }
 
+/* Reduced-motion theme switch: a brief global color crossfade replaces the
+   Matrix wipe. Added to <html> only for the duration of the swap. */
+.theme-x,
+.theme-x * {
+  transition: background-color 440ms ease, border-color 440ms ease,
+    color 440ms ease, fill 440ms ease, stroke 440ms ease, box-shadow 440ms ease,
+    opacity 440ms ease !important;
+}
+
 main {
   position: relative;
   z-index: 1;
@@ -257,9 +266,10 @@ main {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* Keep a glowing (but non-moving) seal, with the glint frozen across it. */
   .masthead-seal svg {
     animation: none;
-    filter: drop-shadow(0 0 3px var(--seal-glint));
+    filter: drop-shadow(0 0 4px var(--seal-glint));
   }
   .seal-glint::before {
     animation: none;

@@ -527,6 +527,14 @@ export default function Home() {
 
   const endMatrix = useCallback(() => setMatrixActive(false), []);
 
+  // Reduced-motion path: a gentle color crossfade instead of the Matrix wipe.
+  const crossfadeTheme = useCallback(() => {
+    const root = document.documentElement;
+    root.classList.add("theme-x");
+    flipTheme();
+    window.setTimeout(() => root.classList.remove("theme-x"), 480);
+  }, [flipTheme]);
+
   const onLogoClick = useCallback(() => {
     if (matrixActive) return;
     const explicit = document.documentElement.getAttribute("data-theme");
@@ -534,12 +542,12 @@ export default function Home() {
       ? explicit === "dark"
       : window.matchMedia("(prefers-color-scheme: dark)").matches;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      flipTheme();
+      crossfadeTheme();
       return;
     }
     setMatrixFromDark(isDark);
     setMatrixActive(true);
-  }, [matrixActive, flipTheme]);
+  }, [matrixActive, crossfadeTheme]);
 
   async function onFileChosen(file: File) {
     if (file.size > 2 * 1024 * 1024) {
