@@ -47,6 +47,61 @@ interface VerifyResult {
   signedText?: string;
 }
 
+function SealMark({ size, className }: { size: number; className?: string }) {
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 48 48"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="M24 4 L6.7 14 V34 L24 44 L41.3 34 V14 Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.4"
+        strokeLinejoin="round"
+      />
+      <circle
+        cx="24"
+        cy="24"
+        r="14.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeDasharray="30 9 18 12"
+        transform="rotate(-35 24 24)"
+      />
+      <circle
+        cx="24"
+        cy="24"
+        r="9.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeDasharray="20 7 12 8"
+        transform="rotate(70 24 24)"
+      />
+      <circle
+        cx="24"
+        cy="24"
+        r="5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeDasharray="14 5 6 4"
+        transform="rotate(180 24 24)"
+      />
+      <circle cx="24" cy="24" r="1.6" fill="currentColor" />
+    </svg>
+  );
+}
+
 function groupFingerprint(hex: string): string {
   return hex.replace(/(.{4})/g, "$1 ").trim();
 }
@@ -259,7 +314,19 @@ export default function Home() {
 
   return (
     <main>
-      <h1>GPG Checker</h1>
+      <div className="watermark" aria-hidden="true">
+        <SealMark size={520} />
+      </div>
+
+      <header className="masthead">
+        <span className="masthead-seal">
+          <SealMark size={44} />
+        </span>
+        <div>
+          <h1>GPG Checker</h1>
+          <div className="armor-line">-----BEGIN VERIFICATION-----</div>
+        </div>
+      </header>
       <p className="subtitle">
         Enter an email address and load a clearsigned file. The signer&apos;s
         public key is looked up on{" "}
@@ -271,6 +338,7 @@ export default function Home() {
       </p>
 
       <form onSubmit={onSubmit} className="card">
+        <h2>Verify a file</h2>
         <label htmlFor="email">Signer&apos;s email address</label>
         <input
           id="email"
@@ -436,11 +504,14 @@ export default function Home() {
       )}
 
       <footer>
-        Verification runs server-side with{" "}
-        <a href="https://openpgpjs.org/" target="_blank" rel="noreferrer">
-          OpenPGP.js
-        </a>
-        . Keys are fetched live from public keyservers and nothing is stored.
+        <div className="armor-line">-----END VERIFICATION-----</div>
+        <p>
+          Verification runs server-side with{" "}
+          <a href="https://openpgpjs.org/" target="_blank" rel="noreferrer">
+            OpenPGP.js
+          </a>
+          . Keys are fetched live from public keyservers and nothing is stored.
+        </p>
       </footer>
     </main>
   );

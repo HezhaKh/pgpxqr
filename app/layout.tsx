@@ -13,9 +13,23 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://pgp.hk-hk.net"),
   title: "GPG Checker",
   description:
     "Verify PGP clearsigned messages: look up a key by email, see its fingerprint, and check the signature.",
+  openGraph: {
+    title: "GPG Checker",
+    description:
+      "Verify PGP clearsigned files against a signer's email. Keyserver lookup, fingerprint, verdict.",
+    images: ["/og.png"],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "GPG Checker",
+    description:
+      "Verify PGP clearsigned files against a signer's email. Keyserver lookup, fingerprint, verdict.",
+    images: ["/og.png"],
+  },
 };
 
 export default function RootLayout({

@@ -1,40 +1,48 @@
 :root {
-  --bg: #f6f7f9;
-  --fg: #16181d;
-  --muted: #5b6472;
+  --bg: #f2f5f4;
+  --fg: #14201c;
+  --muted: #566660;
   --card-bg: #ffffff;
-  --border: #d9dee6;
-  --accent: #2456d6;
+  --border: #d5dedb;
+  --accent: #0f766e;
+  --accent-strong: #0b5d57;
   --accent-fg: #ffffff;
-  --good-bg: #e2f4e6;
-  --good-fg: #14652a;
-  --good-border: #9ed3ab;
-  --bad-bg: #fbe4e4;
+  --good-bg: #e1f2e5;
+  --good-fg: #17652c;
+  --good-border: #a0d2ac;
+  --bad-bg: #fbe3e3;
   --bad-fg: #8f1d1d;
   --bad-border: #e3a8a8;
-  --warn-bg: #fcf0d7;
-  --warn-fg: #7a5410;
-  --code-bg: #eef1f5;
+  --warn-bg: #fbf0d8;
+  --warn-fg: #74510f;
+  --warn-border: #dfc07a;
+  --code-bg: #e9efed;
+  --watermark-opacity: 0.045;
+  --mono: var(--font-geist-mono, ui-monospace, "Cascadia Mono", monospace);
+  --sans: var(--font-geist-sans, system-ui, -apple-system, sans-serif);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #101318;
-    --fg: #e6e9ee;
-    --muted: #9aa4b2;
-    --card-bg: #181d25;
-    --border: #2b333f;
-    --accent: #6b96f5;
-    --accent-fg: #0d1117;
-    --good-bg: #14291a;
-    --good-fg: #7fd695;
+    --bg: #0b100f;
+    --fg: #e2eae7;
+    --muted: #91a09b;
+    --card-bg: #141b19;
+    --border: #263330;
+    --accent: #2dd4bf;
+    --accent-strong: #5eead4;
+    --accent-fg: #06201c;
+    --good-bg: #12291a;
+    --good-fg: #82d796;
     --good-border: #2b5b38;
     --bad-bg: #321719;
     --bad-fg: #ec9a9a;
     --bad-border: #6b2f33;
     --warn-bg: #2f2611;
     --warn-fg: #e4bc6a;
-    --code-bg: #232a35;
+    --warn-border: #6b5525;
+    --code-bg: #1d2724;
+    --watermark-opacity: 0.06;
   }
 }
 
@@ -51,69 +59,132 @@ html {
 body {
   background: var(--bg);
   color: var(--fg);
-  font-family: var(--font-geist-sans, system-ui, -apple-system, sans-serif);
+  font-family: var(--sans);
   line-height: 1.55;
 }
 
 main {
+  position: relative;
   max-width: 780px;
   margin: 0 auto;
   padding: 3rem 1.25rem 4rem;
 }
 
+/* Giant seal ghosted into the ground, clipped to the viewport */
+.watermark {
+  position: fixed;
+  top: -160px;
+  right: -180px;
+  color: var(--accent);
+  opacity: var(--watermark-opacity);
+  pointer-events: none;
+  z-index: 0;
+}
+
+main > *:not(.watermark) {
+  position: relative;
+  z-index: 1;
+}
+
+.masthead {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.masthead-seal {
+  color: var(--accent);
+  display: inline-flex;
+}
+
 h1 {
-  font-size: 1.9rem;
-  margin-bottom: 0.4rem;
+  font-family: var(--mono);
+  font-size: 1.45rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  line-height: 1.2;
+}
+
+.armor-line {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-top: 0.15rem;
+  user-select: none;
 }
 
 h2 {
-  font-size: 1.05rem;
-  margin-bottom: 0.75rem;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--muted);
+  margin-bottom: 0.9rem;
 }
 
 .subtitle {
   color: var(--muted);
-  margin-bottom: 1.75rem;
+  margin-bottom: 1.9rem;
+  max-width: 62ch;
 }
 
 a {
   color: var(--accent);
+  text-underline-offset: 2px;
+}
+
+a:hover {
+  color: var(--accent-strong);
 }
 
 .card {
   background: var(--card-bg);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1.25rem;
+  border-radius: 6px;
+  padding: 1.4rem;
   margin-bottom: 1.25rem;
 }
 
 label {
   display: block;
-  font-weight: 600;
-  margin-bottom: 0.35rem;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+  margin-bottom: 0.45rem;
 }
 
 .hint {
+  font-family: var(--sans);
   font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
   color: var(--muted);
   font-size: 0.85rem;
 }
 
 input[type="email"] {
   width: 100%;
-  padding: 0.6rem 0.75rem;
+  padding: 0.65rem 0.8rem;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 5px;
   background: var(--bg);
   color: var(--fg);
-  font-size: 0.95rem;
-  margin-bottom: 1rem;
+  font-family: var(--mono);
+  font-size: 0.9rem;
+  margin-bottom: 1.15rem;
 }
 
-input:focus {
+input:focus-visible,
+button:focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  outline-offset: 2px;
 }
 
 .form-row {
@@ -124,24 +195,40 @@ input:focus {
 }
 
 button {
-  font: inherit;
-  border-radius: 8px;
-  padding: 0.55rem 1.2rem;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  border-radius: 5px;
+  padding: 0.6rem 1.2rem;
   cursor: pointer;
   border: 1px solid var(--border);
+  transition: background-color 120ms ease, border-color 120ms ease,
+    transform 120ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button {
+    transition: none;
+  }
 }
 
 button.primary {
   background: var(--accent);
   color: var(--accent-fg);
   border-color: var(--accent);
-  font-weight: 600;
   margin-left: auto;
 }
 
+button.primary:hover:not(:disabled) {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+}
+
 button.primary:disabled {
-  opacity: 0.6;
-  cursor: wait;
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 button.secondary {
@@ -149,17 +236,27 @@ button.secondary {
   color: var(--fg);
 }
 
-.file-name {
-  color: var(--muted);
-  font-size: 0.85rem;
+button.secondary:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
+.file-name {
+  font-family: var(--mono);
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+/* Verdict banner: an impressed stamp */
 .banner {
-  border-radius: 10px;
-  padding: 0.9rem 1.1rem;
-  font-weight: 600;
+  font-family: var(--mono);
+  font-size: 0.86rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border-radius: 6px;
+  padding: 1rem 1.15rem;
   margin-bottom: 1rem;
-  border: 1px solid;
+  border: 2px solid;
   overflow-wrap: anywhere;
 }
 
@@ -167,6 +264,7 @@ button.secondary {
   background: var(--good-bg);
   color: var(--good-fg);
   border-color: var(--good-border);
+  box-shadow: 3px 3px 0 var(--good-border);
 }
 
 .banner-bad,
@@ -174,37 +272,32 @@ button.secondary {
   background: var(--bad-bg);
   color: var(--bad-fg);
   border-color: var(--bad-border);
+  box-shadow: 3px 3px 0 var(--bad-border);
 }
 
 .banner-warn {
   background: var(--warn-bg);
   color: var(--warn-fg);
-  border-color: var(--warn-fg);
-}
-
-.sig-caution {
-  border-left-color: var(--warn-fg);
-}
-
-.sig-caution .sig-status {
-  color: var(--warn-fg);
-}
-
-.sig-status .badge {
-  margin-left: 0.5rem;
+  border-color: var(--warn-border);
+  box-shadow: 3px 3px 0 var(--warn-border);
 }
 
 .keyserver-line {
+  font-family: var(--mono);
   color: var(--muted);
-  font-size: 0.9rem;
-  margin-bottom: 1rem;
+  font-size: 0.8rem;
+  margin-bottom: 1.1rem;
+}
+
+.keyserver-line .hint {
+  font-family: var(--sans);
 }
 
 code {
-  font-family: var(--font-geist-mono, ui-monospace, monospace);
+  font-family: var(--mono);
   background: var(--code-bg);
   border-radius: 4px;
-  padding: 0.1rem 0.3rem;
+  padding: 0.1rem 0.35rem;
   font-size: 0.85em;
 }
 
@@ -216,21 +309,26 @@ code {
 }
 
 .fingerprint {
-  letter-spacing: 0.02em;
+  letter-spacing: 0.03em;
   overflow-wrap: anywhere;
 }
 
 .copy-btn {
-  font-size: 0.7rem;
-  padding: 0.1rem 0.5rem;
-  border-radius: 5px;
+  font-size: 0.62rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
   background: var(--card-bg);
   color: var(--muted);
 }
 
+.copy-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .key-card {
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 5px;
   padding: 1rem;
   margin-bottom: 0.75rem;
 }
@@ -243,41 +341,54 @@ code {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin-bottom: 0.6rem;
-  font-weight: 600;
+  margin-bottom: 0.7rem;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  font-weight: 700;
 }
 
 .badge {
-  font-size: 0.7rem;
+  font-family: var(--mono);
+  font-size: 0.62rem;
   font-weight: 700;
   text-transform: uppercase;
-  border-radius: 5px;
-  padding: 0.1rem 0.45rem;
+  letter-spacing: 0.08em;
+  border-radius: 4px;
+  padding: 0.12rem 0.45rem;
+  border: 1px solid;
 }
 
 .badge-bad {
   background: var(--bad-bg);
   color: var(--bad-fg);
+  border-color: var(--bad-border);
 }
 
 .badge-warn {
   background: var(--warn-bg);
   color: var(--warn-fg);
+  border-color: var(--warn-border);
 }
 
 dl {
   display: grid;
   grid-template-columns: max-content 1fr;
-  gap: 0.35rem 1rem;
+  gap: 0.4rem 1.1rem;
   font-size: 0.9rem;
 }
 
 dt {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
   color: var(--muted);
+  padding-top: 0.15rem;
 }
 
 dd {
   overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
 }
 
 .uid-list {
@@ -288,12 +399,12 @@ dd {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.8rem;
 }
 
 .sig {
   border-left: 4px solid var(--border);
-  padding: 0.35rem 0 0.35rem 0.9rem;
+  padding: 0.35rem 0 0.35rem 0.95rem;
   font-size: 0.9rem;
 }
 
@@ -305,7 +416,13 @@ dd {
   border-left-color: var(--bad-fg);
 }
 
+.sig-caution {
+  border-left-color: var(--warn-fg);
+}
+
 .sig-status {
+  font-family: var(--mono);
+  font-size: 0.82rem;
   font-weight: 700;
 }
 
@@ -317,25 +434,30 @@ dd {
   color: var(--bad-fg);
 }
 
+.sig-caution .sig-status,
 .sig-no-matching-key .sig-status {
   color: var(--warn-fg);
 }
 
+.sig-status .badge {
+  margin-left: 0.5rem;
+}
+
 .sig-meta {
   color: var(--muted);
-  margin-top: 0.15rem;
+  margin-top: 0.2rem;
 }
 
 .sig-detail {
   color: var(--muted);
   font-size: 0.85rem;
-  margin-top: 0.15rem;
+  margin-top: 0.2rem;
 }
 
 .download-row {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.9rem;
   flex-wrap: wrap;
 }
 
@@ -344,11 +466,15 @@ dd {
 }
 
 footer {
-  margin-top: 2.5rem;
+  margin-top: 2.75rem;
   color: var(--muted);
   font-size: 0.85rem;
-  border-top: 1px solid var(--border);
-  padding-top: 1.25rem;
+  border-top: 1px dashed var(--border);
+  padding-top: 1.1rem;
+}
+
+footer .armor-line {
+  margin-bottom: 0.6rem;
 }
 
 @media (max-width: 560px) {
@@ -358,6 +484,10 @@ footer {
   }
 
   dt {
-    margin-top: 0.5rem;
+    margin-top: 0.55rem;
+  }
+
+  .watermark {
+    display: none;
   }
 }
