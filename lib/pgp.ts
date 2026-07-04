@@ -1,10 +1,15 @@
 import * as openpgp from "openpgp";
 
 export const MAX_MESSAGE_BYTES = 2 * 1024 * 1024; // 2 MB, below Vercel's 4.5 MB request cap
-const MAX_KEYSERVER_RESPONSE_BYTES = 8 * 1024 * 1024; // flooded keys can be tens of MB
+// A normal key (even a multi-key HKP bundle) is well under 1 MB; SKS-flooded
+// certs are tens of MB. Cap low so we neither buffer nor amplify those.
+const MAX_KEYSERVER_RESPONSE_BYTES = 1 * 1024 * 1024;
 const MAX_KEYS_CHECKED = 25;
 const MAX_SIGNATURES_CHECKED = 10;
-const KEYSERVER_TIMEOUT_MS = 8000;
+const KEYSERVER_TIMEOUT_MS = 6000; // per keyserver request
+const TOTAL_LOOKUP_BUDGET_MS = 9000; // overall cap across both keyservers
+const LOOKUP_CACHE_TTL_MS = 60_000;
+const LOOKUP_CACHE_MAX_ENTRIES = 200;
 
 // Overridable so tests can point at a local mock keyserver.
 const VKS_BASE = process.env.KEYSERVER_VKS_BASE ?? "https://keys.openpgp.org";
@@ -56,6 +61,9 @@ export interface VerifyResult {
   anyValid?: boolean;
   anyInvalid?: boolean;
   validButUntrustedKey?: boolean;
+  // false when the key came from keyserver.ubuntu.com (which does not verify
+  // email ownership), so the client can downgrade the verdict.
+  keyserverVerifiesOwnership?: boolean;
   warnings?: string[];
   // Full verified cleartext (bounded by the 2 MB input cap), so the client
   // can offer it as a download.
@@ -68,10 +76,17 @@ export function isValidEmail(email: string): boolean {
   return email.length <= 254 && EMAIL_RE.test(email);
 }
 
-async function fetchWithTimeout(url: string): Promise<Response> {
+async function fetchWithTimeout(
+  url: string,
+  timeoutMs: number
+): Promise<Response> {
   return fetch(url, {
-    signal: AbortSignal.timeout(KEYSERVER_TIMEOUT_MS),
-    headers: { "User-Agent": "gpg-checker (openpgp.js)" },
+    signal: AbortSignal.timeout(timeoutMs),
+    headers: {
+      // Contactable UA so keyserver operators can reach us before blocklisting.
+      "User-Agent":
+        "pgp-checker/1.0 (+https://gpg.hk-hk.net; openpgp.js) abuse: hezhaxe.hx@gmail.com",
+    },
     cache: "no-store",
   });
 }
@@ -111,20 +126,55 @@ async function readBodyLimited(
 }
 
 type LookupOutcome =
-  | { status: "found"; armored: string; keyserver: Keyserver }
+  | { status: "found"; armored: string; keyserver: Keyserver; verifiesOwnership: boolean }
   | { status: "not-found" }
   | { status: "unavailable"; detail: string };
 
-// Queries one keyserver. "not-found" only when the server answered the
-// question (404, or a 2xx body with no key); anything else is an error so the
-// caller never claims a key doesn't exist just because a server was down.
+// Short-TTL, size-bounded, per-instance cache so a burst of lookups for the
+// same email collapses to one upstream query instead of re-hitting the
+// keyservers on every request. Best-effort (serverless instances are
+// ephemeral and don't share it); paired with inbound rate limiting. Only
+// definitive outcomes (found / not-found) are cached, never transient errors.
+type CacheableOutcome = Extract<LookupOutcome, { status: "found" | "not-found" }>;
+const lookupCache = new Map<string, { outcome: CacheableOutcome; expires: number }>();
+
+function cacheGet(email: string): CacheableOutcome | null {
+  const hit = lookupCache.get(email);
+  if (!hit) return null;
+  if (hit.expires <= Date.now()) {
+    lookupCache.delete(email);
+    return null;
+  }
+  return hit.outcome;
+}
+
+function cacheSet(email: string, outcome: CacheableOutcome): CacheableOutcome {
+  if (lookupCache.size >= LOOKUP_CACHE_MAX_ENTRIES) {
+    // Evict the oldest insertion (Map preserves insertion order).
+    const oldest = lookupCache.keys().next().value;
+    if (oldest !== undefined) lookupCache.delete(oldest);
+  }
+  lookupCache.set(email, { outcome, expires: Date.now() + LOOKUP_CACHE_TTL_MS });
+  return outcome;
+}
+
+// Queries one keyserver within an overall deadline. "not-found" only when the
+// server answered the question (404, or a 2xx body with no key); anything else
+// is an error so the caller never claims a key doesn't exist just because a
+// server was down.
 async function queryKeyserver(
   url: string,
-  host: Keyserver
+  host: Keyserver,
+  verifiesOwnership: boolean,
+  deadline: number
 ): Promise<LookupOutcome> {
+  const budget = Math.min(KEYSERVER_TIMEOUT_MS, deadline - Date.now());
+  if (budget <= 0) {
+    return { status: "unavailable", detail: `${host}: lookup deadline exceeded` };
+  }
   let res: Response;
   try {
-    res = await fetchWithTimeout(url);
+    res = await fetchWithTimeout(url, budget);
   } catch (e) {
     return {
       status: "unavailable",
@@ -145,29 +195,37 @@ async function queryKeyserver(
   if (!armored.includes("-----BEGIN PGP PUBLIC KEY BLOCK-----")) {
     return { status: "not-found" };
   }
-  return { status: "found", armored, keyserver: host };
+  return { status: "found", armored, keyserver: host, verifiesOwnership };
 }
 
 export async function lookupKeyByEmail(email: string): Promise<LookupOutcome> {
-  const encoded = encodeURIComponent(email);
+  const cached = cacheGet(email);
+  if (cached) return cached;
 
-  // Primary: keys.openpgp.org (returns keys only for verified email addresses)
+  const encoded = encodeURIComponent(email);
+  const deadline = Date.now() + TOTAL_LOOKUP_BUDGET_MS;
+
+  // Primary: keys.openpgp.org (serves keys only for verified email addresses).
   const vks = await queryKeyserver(
     `${VKS_BASE}/vks/v1/by-email/${encoded}`,
-    new URL(VKS_BASE).host
+    new URL(VKS_BASE).host,
+    true,
+    deadline
   );
-  if (vks.status === "found") return vks;
+  if (vks.status === "found") return cacheSet(email, vks);
 
-  // Fallback: keyserver.ubuntu.com (no email ownership verification)
+  // Fallback: keyserver.ubuntu.com (does NOT verify email ownership).
   const hkp = await queryKeyserver(
     `${HKP_BASE}/pks/lookup?op=get&options=mr&exact=on&search=${encoded}`,
-    new URL(HKP_BASE).host
+    new URL(HKP_BASE).host,
+    false,
+    deadline
   );
-  if (hkp.status === "found") return hkp;
+  if (hkp.status === "found") return cacheSet(email, hkp);
 
-  // Only claim absence when both servers definitively answered "no key".
+  // Only claim absence — and cache it — when both servers definitively said so.
   if (vks.status === "not-found" && hkp.status === "not-found") {
-    return { status: "not-found" };
+    return cacheSet(email, { status: "not-found" });
   }
   const details = [vks, hkp]
     .filter((o): o is Extract<LookupOutcome, { status: "unavailable" }> =>
@@ -418,22 +476,23 @@ export async function verifyClearsigned(
       cleartextMessage: clearsignedText,
     });
   } catch (e) {
+    console.error("readCleartextMessage failed:", e);
     return {
       ok: false,
       email: trimmedEmail,
-      error: `Could not parse the clearsigned message: ${
-        e instanceof Error ? e.message : String(e)
-      }`,
+      error: "Could not parse the input as a clearsigned PGP message.",
     };
   }
 
   const lookup = await lookupKeyByEmail(trimmedEmail);
   if (lookup.status === "unavailable") {
+    console.error("keyserver lookup unavailable:", lookup.detail);
     return {
       ok: false,
       email: trimmedEmail,
       errorKind: "keyserver-unavailable",
-      error: `The keyservers could not be reached, so whether a key exists for this email is unknown. Try again later. (${lookup.detail})`,
+      error:
+        "The keyservers could not be reached, so whether a key exists for this email is unknown. Please try again later.",
     };
   }
   if (lookup.status === "not-found") {
@@ -451,13 +510,12 @@ export async function verifyClearsigned(
       armoredKeys: lookup.armored,
     })) as openpgp.PublicKey[];
   } catch (e) {
+    console.error("readKeys failed:", e);
     return {
       ok: false,
       email: trimmedEmail,
       keyserver: lookup.keyserver,
-      error: `Keyserver returned data that could not be parsed as a PGP key: ${
-        e instanceof Error ? e.message : String(e)
-      }`,
+      error: "The keyserver returned data that could not be parsed as a PGP key.",
     };
   }
 
@@ -511,14 +569,13 @@ export async function verifyClearsigned(
       }
     }
   } catch (e) {
+    console.error("openpgp.verify failed:", e);
     return {
       ok: false,
       email: trimmedEmail,
       keyserver: lookup.keyserver,
       keys: await Promise.all(keys.map(describeKey)),
-      error: `Signature verification failed: ${
-        e instanceof Error ? e.message : String(e)
-      }`,
+      error: "Signature verification failed.",
     };
   }
 
@@ -528,12 +585,10 @@ export async function verifyClearsigned(
     ok: true,
     email: trimmedEmail,
     keyserver: lookup.keyserver,
-    keyserverNote:
-      lookup.keyserver === "keyserver.ubuntu.com"
-        ? "keyserver.ubuntu.com does not verify email ownership. Confirm the fingerprint through another channel before trusting it."
-        : lookup.keyserver === "keys.openpgp.org"
-        ? "keys.openpgp.org only serves keys whose email address was verified by the key owner."
-        : undefined,
+    keyserverVerifiesOwnership: lookup.verifiesOwnership,
+    keyserverNote: lookup.verifiesOwnership
+      ? "keys.openpgp.org only serves keys whose email address was verified by the key owner."
+      : "keyserver.ubuntu.com does not verify email ownership. Confirm the fingerprint through another channel before trusting it.",
     keys: keyInfos,
     signatures,
     anyValid,

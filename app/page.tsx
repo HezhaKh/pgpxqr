@@ -43,6 +43,7 @@ interface VerifyResult {
   anyValid?: boolean;
   anyInvalid?: boolean;
   validButUntrustedKey?: boolean;
+  keyserverVerifiesOwnership?: boolean;
   warnings?: string[];
   signedText?: string;
 }
@@ -368,17 +369,22 @@ export default function Home() {
     }
   }
 
-  // "good" only when a signature verified, nothing failed, and the signing
-  // key is still healthy today. Anything mixed gets the amber caution state.
+  // "good" only when a signature verified, nothing failed, the signing key is
+  // still healthy today, AND the key came from an ownership-verifying source.
+  // Anything else with a valid signature gets the amber caution state.
   const validSigs =
     result?.signatures?.filter((s) => s.status === "valid") ?? [];
+  const hkpUnverified =
+    result?.ok === true &&
+    result.anyValid === true &&
+    result.keyserverVerifiesOwnership === false;
   const verdict =
     result &&
     (!result.ok
       ? "error"
       : !result.anyValid
       ? "bad"
-      : result.anyInvalid || result.validButUntrustedKey
+      : result.anyInvalid || result.validButUntrustedKey || hkpUnverified
       ? "caution"
       : "good");
 
@@ -423,6 +429,11 @@ export default function Home() {
     }
     if (result?.anyInvalid) {
       parts.push("another signature on this message FAILED verification");
+    }
+    if (hkpUnverified) {
+      parts.push(
+        "the key came from keyserver.ubuntu.com, which does NOT verify email ownership — anyone can upload a key under this address, so confirm the fingerprint out of band"
+      );
     }
     return `A signature is cryptographically valid, but ${parts.join("; and ")}.`;
   }

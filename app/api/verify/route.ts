@@ -4,7 +4,43 @@ import { verifyClearsigned, MAX_MESSAGE_BYTES } from "@/lib/pgp";
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
+// Browsers set Origin honestly on cross-origin POSTs and page JS cannot forge
+// it, so rejecting foreign origins stops a malicious web page from conscripting
+// visitors' browsers into driving this endpoint. Non-browser clients (curl,
+// scripts) send no Origin and are unaffected — this is not a security boundary
+// against them, only against the free browser-botnet vector.
+function originAllowed(origin: string | null): boolean {
+  if (!origin) return true;
+  try {
+    const host = new URL(origin).hostname;
+    return (
+      host === "gpg.hk-hk.net" ||
+      host === "pgp.hk-hk.net" ||
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host.endsWith(".vercel.app")
+    );
+  } catch {
+    return false;
+  }
+}
+
 export async function POST(req: NextRequest) {
+  if (!originAllowed(req.headers.get("origin"))) {
+    return NextResponse.json(
+      { ok: false, error: "Cross-origin requests are not allowed." },
+      { status: 403 }
+    );
+  }
+
+  const contentType = req.headers.get("content-type") ?? "";
+  if (!contentType.toLowerCase().includes("application/json")) {
+    return NextResponse.json(
+      { ok: false, error: "Content-Type must be application/json." },
+      { status: 415 }
+    );
+  }
+
   // Coarse pre-parse guard only: JSON escaping inflates the message (~2 bytes
   // per newline), so allow 2x here; the post-parse check below is the real gate.
   const contentLength = Number(req.headers.get("content-length") ?? 0);
@@ -49,11 +85,9 @@ export async function POST(req: NextRequest) {
       : 422;
     return NextResponse.json(result, { status });
   } catch (e) {
+    console.error("verify handler error:", e);
     return NextResponse.json(
-      {
-        ok: false,
-        error: `Unexpected error: ${e instanceof Error ? e.message : String(e)}`,
-      },
+      { ok: false, error: "An unexpected error occurred." },
       { status: 500 }
     );
   }
